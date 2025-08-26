@@ -1,0 +1,134 @@
+[
+  {
+    "name": "Basic Document",
+    "description": "Simple document indexing",
+    "output_pattern": "{document_type}/{file_name}",
+    "input_folder": "",
+    "output_folder": "",
+    "fields": [
+      {
+        "name": "Document Type",
+        "value": "",
+        "placeholder": "e.g., contracts, invoices",
+        "required": false,
+        "field_type": "text",
+        "options": []
+      },
+      {
+        "name": "File Name",
+        "value": "",
+        "placeholder": "Output filename",
+        "required": true,
+        "field_type": "text",
+        "options": []
+      }
+    ]
+  },
+  {
+    "name": "Invoice Processing",
+    "description": "For processing invoices",
+    "output_pattern": "{vendor}/{year}/{month}/{invoice_number}",
+    "input_folder": "",
+    "output_folder": "",
+    "fields": [
+      {
+        "name": "Vendor",
+        "value": "",
+        "placeholder": "Vendor name",
+        "required": true,
+        "field_type": "text",
+        "options": []
+      },
+      {
+        "name": "Invoice Number",
+        "value": "",
+        "placeholder": "Invoice #",
+        "required": true,
+        "field_type": "text",
+        "options": []
+      },
+      {
+        "name": "Year",
+        "value": "",
+        "placeholder": "2024",
+        "required": true,
+        "field_type": "text",
+        "options": []
+      },
+      {
+        "name": "Month",
+        "value": "",
+        "placeholder": "01-12",
+        "required": true,
+        "field_type": "text",
+        "options": []
+      }
+    ]
+  },
+  {
+    "name": "Contract Management",
+    "description": "For organizing contracts",
+    "output_pattern": "{contract_type}/{client}/{file_name}",
+    "input_folder": "",
+    "output_folder": "",
+    "fields": [
+      {
+        "name": "Contract Type",
+        "value": "Service Agreement",
+        "placeholder": "Contract type",
+        "required": false,
+        "field_type": "text",
+        "options": []
+      },
+      {
+        "name": "Client",
+        "value": "",
+        "placeholder": "Client name",
+        "required": true,
+        "field_type": "text",
+        "options": []
+      },
+      {
+        "name": "File Name",
+        "value": "",
+        "placeholder": "Contract filename",
+        "required": true,
+        "field_type": "text",
+        "options": []
+      }
+    ]
+  },
+  {
+    "name": "Demo Profile",
+    "description": "",
+    "output_pattern": "{State}/{LGA}/{owner}",
+    "input_folder": "",
+    "output_folder": "",
+    "fields": [
+      {
+        "name": "State",
+        "value": "",
+        "placeholder": "",
+        "required": false,
+        "field_type": "text",
+        "options": []
+      },
+      {
+        "name": "LGA",
+        "value": "",
+        "placeholder": "",
+        "required": false,
+        "field_type": "text",
+        "options": []
+      },
+      {
+        "name": "owner",
+        "value": "",
+        "placeholder": "",
+        "required": false,
+        "field_type": "text",
+        "options": []
+      }
+    ]
+  }
+]
