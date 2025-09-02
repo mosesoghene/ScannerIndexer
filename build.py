@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Build script for PDF Page Extractor.
+Build script for PDF Page Extractor with NAPS2 integration.
 
 This script creates a Windows executable using PyInstaller and
-optionally builds an installer using Inno Setup.
+builds an installer using Inno Setup that includes NAPS2 scanner software.
 """
 
 import sys
@@ -11,7 +11,15 @@ import os
 import shutil
 import subprocess
 import argparse
+import urllib.request
+import hashlib
 from pathlib import Path
+
+# NAPS2 configuration
+NAPS2_VERSION = "8.2.1"
+NAPS2_URL = f"https://github.com/cyanfish/naps2/releases/download/v{NAPS2_VERSION}/naps2-{NAPS2_VERSION}-win-x64.exe"
+NAPS2_FILENAME = f"naps2-{NAPS2_VERSION}-win-x64.exe"
+NAPS2_EXPECTED_SIZE = 50 * 1024 * 1024  # Approximate size in bytes (50MB)
 
 
 def find_iscc():
@@ -57,6 +65,90 @@ def test_iscc_executable(iscc_path):
             return False
     except Exception as e:
         print(f"✗ Error testing ISCC: {e}")
+        return False
+
+
+def download_file_with_progress(url, filename):
+    """Download file with progress indication."""
+
+    def progress_hook(block_num, block_size, total_size):
+        downloaded = block_num * block_size
+        if total_size > 0:
+            percent = min(100.0, (downloaded / total_size) * 100)
+            mb_downloaded = downloaded / (1024 * 1024)
+            mb_total = total_size / (1024 * 1024)
+            print(f"\rDownloading: {percent:.1f}% ({mb_downloaded:.1f}/{mb_total:.1f} MB)", end='')
+        else:
+            mb_downloaded = downloaded / (1024 * 1024)
+            print(f"\rDownloading: {mb_downloaded:.1f} MB", end='')
+
+    try:
+        urllib.request.urlretrieve(url, filename, progress_hook)
+        print()  # New line after progress
+        return True
+    except Exception as e:
+        print(f"\nDownload failed: {e}")
+        return False
+
+
+def verify_file_integrity(filepath, min_size=None):
+    """Verify downloaded file integrity."""
+    if not Path(filepath).exists():
+        return False, "File does not exist"
+
+    file_size = Path(filepath).stat().st_size
+    if min_size and file_size < min_size:
+        return False, f"File size too small: {file_size} bytes (expected at least {min_size})"
+
+    # Check if it's a valid PE executable
+    try:
+        with open(filepath, 'rb') as f:
+            header = f.read(2)
+            if header != b'MZ':
+                return False, "Not a valid Windows executable (missing MZ header)"
+    except Exception as e:
+        return False, f"Error reading file: {e}"
+
+    return True, f"File verified: {file_size} bytes"
+
+
+def download_naps2():
+    """Download NAPS2 if not already present."""
+    naps2_path = Path("third_party") / NAPS2_FILENAME
+
+    # Create third_party directory
+    naps2_path.parent.mkdir(exist_ok=True)
+
+    if naps2_path.exists():
+        print(f"NAPS2 already exists: {naps2_path}")
+        # Verify existing file
+        is_valid, message = verify_file_integrity(naps2_path, NAPS2_EXPECTED_SIZE * 0.8)  # Allow 20% variance
+        if is_valid:
+            print(f"✓ {message}")
+            return True
+        else:
+            print(f"⚠ Existing file invalid: {message}")
+            print("Re-downloading NAPS2...")
+            naps2_path.unlink()  # Remove invalid file
+
+    print(f"Downloading NAPS2 v{NAPS2_VERSION}...")
+    print(f"From: {NAPS2_URL}")
+    print(f"To: {naps2_path}")
+
+    success = download_file_with_progress(NAPS2_URL, str(naps2_path))
+
+    if success:
+        # Verify downloaded file
+        is_valid, message = verify_file_integrity(naps2_path, NAPS2_EXPECTED_SIZE * 0.8)
+        if is_valid:
+            print(f"✓ NAPS2 downloaded successfully: {message}")
+            return True
+        else:
+            print(f"✗ Downloaded file invalid: {message}")
+            naps2_path.unlink()  # Remove invalid file
+            return False
+    else:
+        print("✗ Failed to download NAPS2")
         return False
 
 
@@ -288,12 +380,12 @@ VSVersionInfo(
       StringTable(
         u'040904B0',
         [StringStruct(u'CompanyName', u'Moses Oghene'),
-        StringStruct(u'FileDescription', u'PDF Page Extractor - Extract and organize PDF pages'),
+        StringStruct(u'FileDescription', u'PDF Page Extractor - Extract and organize PDF pages with NAPS2 scanner integration'),
         StringStruct(u'FileVersion', u'1.0.0.0'),
         StringStruct(u'InternalName', u'PDFPageExtractor'),
         StringStruct(u'LegalCopyright', u'Copyright (C) 2024 Moses Oghene'),
         StringStruct(u'OriginalFilename', u'PDFPageExtractor.exe'),
-        StringStruct(u'ProductName', u'PDF Page Extractor'),
+        StringStruct(u'ProductName', u'PDF Page Extractor with NAPS2'),
         StringStruct(u'ProductVersion', u'1.0.0.0')])
       ]),
     VarFileInfo([VarStruct(u'Translation', [1033, 1200])])
@@ -331,7 +423,7 @@ def build_executable(debug=False):
 
 
 def create_inno_script():
-    """Create Inno Setup script for building the installer."""
+    """Create Inno Setup script for building the installer with NAPS2."""
 
     # Check if icon exists, use conditional setup
     icon_path = Path('src/assets/icon.ico')
@@ -341,13 +433,18 @@ def create_inno_script():
     has_profiles = Path('profiles.json').exists()
     has_config_template = Path('config.json.template').exists()
 
+    # Check if NAPS2 exists
+    naps2_path = Path("third_party") / NAPS2_FILENAME
+    has_naps2 = naps2_path.exists()
+
     print(f"Icon file exists: {has_icon}")
     print(f"Profiles file exists: {has_profiles}")
     print(f"Config template exists: {has_config_template}")
+    print(f"NAPS2 installer exists: {has_naps2}")
 
     # Build the script dynamically based on what files exist
-    inno_script = '''
-; Inno Setup Script for PDF Page Extractor
+    inno_script = f'''
+; Inno Setup Script for PDF Page Extractor with NAPS2 Scanner Integration
 ; Generated by build script
 
 #define MyAppName "PDF Page Extractor"
@@ -355,35 +452,49 @@ def create_inno_script():
 #define MyAppPublisher "Moses Oghene"
 #define MyAppURL "https://github.com/mosesogathe/pdf-page-extractor"
 #define MyAppExeName "PDFPageExtractor.exe"
+#define NAPS2Version "{NAPS2_VERSION}"
+#define NAPS2Installer "{NAPS2_FILENAME}"
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application.
-AppId={{A1B2C3D4-E5F6-7890-ABCD-123456789012}}
-AppName={#MyAppName}
-AppVersion={#MyAppVersion}
-AppPublisher={#MyAppPublisher}
-AppPublisherURL={#MyAppURL}
-AppSupportURL={#MyAppURL}
-AppUpdatesURL={#MyAppURL}
-DefaultDirName={autopf}\\{#MyAppName}
+AppId={{{{A1B2C3D4-E5F6-7890-ABCD-123456789012}}}}
+AppName={{#MyAppName}}
+AppVersion={{#MyAppVersion}}
+AppPublisher={{#MyAppPublisher}}
+AppPublisherURL={{#MyAppURL}}
+AppSupportURL={{#MyAppURL}}
+AppUpdatesURL={{#MyAppURL}}
+DefaultDirName={{autopf}}\\{{#MyAppName}}
 DisableProgramGroupPage=yes
 OutputDir=dist\\installer
-OutputBaseFilename=PDFPageExtractor-{#MyAppVersion}-Setup'''
+OutputBaseFilename=PDFPageExtractor-{{#MyAppVersion}}-with-NAPS2-Setup
+ArchitecturesAllowed=x64
+ArchitecturesInstallIn64BitMode=x64'''
 
     # Add icon conditionally
     if has_icon:
         inno_script += '\nSetupIconFile=src\\assets\\icon.ico'
 
-    inno_script += '''
+    inno_script += f'''
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
+; Require admin privileges for NAPS2 installation
+PrivilegesRequired=admin
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+Name: "desktopicon"; Description: "{{cm:CreateDesktopIcon}}"; GroupDescription: "{{cm:AdditionalIcons}}"
+Name: "installnaps2"; Description: "Install NAPS2 Scanner Software (Recommended)"; GroupDescription: "Additional Software"'''
+
+    # Add NAPS2 task only if installer exists
+    if not has_naps2:
+        inno_script = inno_script.replace('Name: "installnaps2"',
+                                          '; NAPS2 installer not found - task disabled\n; Name: "installnaps2"')
+
+    inno_script += '''
 
 [Files]
 Source: "dist\\PDFPageExtractor\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs'''
@@ -395,17 +506,90 @@ Source: "dist\\PDFPageExtractor\\*"; DestDir: "{app}"; Flags: ignoreversion recu
     if has_config_template:
         inno_script += '\nSource: "config.json.template"; DestDir: "{app}"; Flags: ignoreversion'
 
+    # Add NAPS2 installer conditionally
+    if has_naps2:
+        inno_script += f'\nSource: "third_party\\{NAPS2_FILENAME}"; DestDir: "{{tmp}}"; Flags: deleteafterinstall; Tasks: installnaps2'
+
     inno_script += '''
 
 [Icons]
 Name: "{autoprograms}\\{#MyAppName}"; Filename: "{app}\\{#MyAppExeName}"
-Name: "{autodesktop}\\{#MyAppName}"; Filename: "{app}\\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{autodesktop}\\{#MyAppName}"; Filename: "{app}\\{#MyAppExeName}"; Tasks: desktopicon'''
+
+    # Add NAPS2 icons if installing
+    if has_naps2:
+        inno_script += '''
+Name: "{autoprograms}\\NAPS2 Scanner"; Filename: "{autopf}\\NAPS2\\NAPS2.exe"; Tasks: installnaps2
+Name: "{autodesktop}\\NAPS2 Scanner"; Filename: "{autopf}\\NAPS2\\NAPS2.exe"; Tasks: desktopicon installnaps2'''
+
+    inno_script += '''
 
 [Run]
+; Install NAPS2 silently if selected'''
+
+    if has_naps2:
+        inno_script += f'''
+Filename: "{{tmp}}\\{NAPS2_FILENAME}"; Parameters: "/VERYSILENT /NORESTART /SUPPRESSMSGBOXES"; WorkingDir: "{{tmp}}"; Flags: waituntilterminated; Tasks: installnaps2; StatusMsg: "Installing NAPS2 Scanner..."'''
+
+    inno_script += '''
+; Launch PDF Page Extractor after installation
 Filename: "{app}\\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
+
+[Code]
+procedure InitializeWizard;
+begin
+  WizardForm.WelcomeLabel2.Caption := 'This will install PDF Page Extractor with optional NAPS2 scanner integration.' + #13#10#13#10 +
+    'NAPS2 is a document scanning application that works perfectly with PDF Page Extractor for creating and organizing scanned documents.' + #13#10#13#10 +
+    'Click Next to continue, or Cancel to exit Setup.';
+end;
+
+function GetUninstallString(): String;
+var
+  sUnInstPath: String;
+  sUnInstallString: String;
+begin
+  sUnInstPath := ExpandConstant('Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{#emit SetupSetting("AppId")}_is1');
+  sUnInstallString := '';
+  if not RegQueryStringValue(HKLM, sUnInstPath, 'UninstallString', sUnInstallString) then
+    RegQueryStringValue(HKCU, sUnInstPath, 'UninstallString', sUnInstallString);
+  Result := sUnInstallString;
+end;
+
+function IsUpgrade(): Boolean;
+begin
+  Result := (GetUninstallString() <> '');
+end;
+
+function UnInstallOldVersion(): Integer;
+var
+  sUnInstallString: String;
+  iResultCode: Integer;
+begin
+  Result := 0;
+  sUnInstallString := GetUninstallString();
+  if sUnInstallString <> '' then begin
+    sUnInstallString := RemoveQuotes(sUnInstallString);
+    if Exec(sUnInstallString, '/SILENT /NORESTART /SUPPRESSMSGBOXES','', SW_HIDE, ewWaitUntilTerminated, iResultCode) then
+      Result := 3
+    else
+      Result := 2;
+  end else
+    Result := 1;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if (CurStep=ssInstall) then
+  begin
+    if (IsUpgrade()) then
+    begin
+      UnInstallOldVersion();
+    end;
+  end;
+end;
 '''
 
     # Ensure the installer output directory exists
@@ -415,12 +599,12 @@ Type: filesandordirs; Name: "{app}"
     with open('PDFPageExtractor.iss', 'w') as f:
         f.write(inno_script.strip())
 
-    print("✓ Created Inno Setup script")
+    print("✓ Created Inno Setup script with NAPS2 integration")
 
 
 def build_installer():
     """Build the installer using Inno Setup."""
-    print("Building installer...")
+    print("Building installer with NAPS2 integration...")
 
     # Find ISCC path
     iscc_path = find_iscc()
@@ -462,7 +646,14 @@ def build_installer():
             print(result.stderr)
 
         if result.returncode == 0:
-            print("✓ Installer built successfully!")
+            print("✓ Installer with NAPS2 built successfully!")
+
+            # Check if NAPS2 was included
+            naps2_path = Path("third_party") / NAPS2_FILENAME
+            if naps2_path.exists():
+                file_size = naps2_path.stat().st_size / (1024 * 1024)
+                print(f"✓ NAPS2 v{NAPS2_VERSION} included ({file_size:.1f} MB)")
+
             return True
         else:
             print(f"✗ ISCC failed with return code: {result.returncode}")
@@ -477,21 +668,6 @@ def build_installer():
 
             if result.returncode in error_messages:
                 print(f"  Meaning: {error_messages[result.returncode]}")
-
-            # Check if the .iss file exists and is readable
-            iss_file = Path('PDFPageExtractor.iss')
-            if iss_file.exists():
-                print(f"✓ Inno Setup script exists: {iss_file}")
-                print("  First few lines of the script:")
-                try:
-                    with open(iss_file, 'r') as f:
-                        lines = f.readlines()[:10]
-                        for i, line in enumerate(lines, 1):
-                            print(f"    {i:2}: {line.rstrip()}")
-                except Exception as e:
-                    print(f"  Could not read script file: {e}")
-            else:
-                print("✗ Inno Setup script was not created")
 
             return False
 
@@ -512,13 +688,20 @@ def create_config_template():
             "thumbnail_cache_size": 100,
             "remember_last_folders": True,
             "default_output_folder": "",
-            "auto_load_last_session": False
+            "auto_load_last_session": False,
+            "naps2_integration": True,
+            "naps2_path": ""
         },
         "window_settings": {
             "geometry": {},
             "splitter_sizes": [800, 600],
             "last_input_folder": "",
             "last_output_folder": ""
+        },
+        "scanner_settings": {
+            "default_profile": "Document",
+            "auto_process_scans": True,
+            "scan_to_temp": True
         },
         "recent_folders": [],
         "version": "1.0.0"
@@ -528,12 +711,45 @@ def create_config_template():
     with open('config.json.template', 'w', encoding='utf-8') as f:
         json.dump(template, f, indent=4)
 
-    print("✓ Created config template with default settings")
+    print("✓ Created config template with NAPS2 integration settings")
 
 
 def create_sample_profiles():
     """Create sample index profiles for users."""
     profiles = [
+        {
+            "name": "Scanned Documents",
+            "description": "For documents scanned with NAPS2",
+            "fields": [
+                {
+                    "name": "Document Type",
+                    "value": "",
+                    "placeholder": "e.g., contract, receipt, form",
+                    "required": True,
+                    "field_type": "dropdown",
+                    "options": ["Contract", "Receipt", "Invoice", "Form", "Letter", "Report", "Other"]
+                },
+                {
+                    "name": "Date",
+                    "value": "",
+                    "placeholder": "YYYY-MM-DD",
+                    "required": False,
+                    "field_type": "text",
+                    "options": []
+                },
+                {
+                    "name": "Description",
+                    "value": "",
+                    "placeholder": "Brief description",
+                    "required": True,
+                    "field_type": "text",
+                    "options": []
+                }
+            ],
+            "output_pattern": "Scanned/{document_type}/{date}/{description}",
+            "input_folder": "",
+            "output_folder": ""
+        },
         {
             "name": "Basic Document",
             "description": "Simple document extraction with basic metadata",
@@ -599,47 +815,6 @@ def create_sample_profiles():
             "output_pattern": "Invoices/{vendor}/{year}/{month}/{invoice_number}",
             "input_folder": "",
             "output_folder": ""
-        },
-        {
-            "name": "Contract Management",
-            "description": "Organize contracts by type and client",
-            "fields": [
-                {
-                    "name": "Contract Type",
-                    "value": "",
-                    "placeholder": "Type of contract",
-                    "required": True,
-                    "field_type": "dropdown",
-                    "options": ["Service Agreement", "NDA", "Employment", "Vendor", "Partnership", "License"]
-                },
-                {
-                    "name": "Client",
-                    "value": "",
-                    "placeholder": "Client or counterparty name",
-                    "required": True,
-                    "field_type": "text",
-                    "options": []
-                },
-                {
-                    "name": "Date Signed",
-                    "value": "",
-                    "placeholder": "Date contract was signed",
-                    "required": False,
-                    "field_type": "text",
-                    "options": []
-                },
-                {
-                    "name": "File Name",
-                    "value": "",
-                    "placeholder": "Contract filename",
-                    "required": True,
-                    "field_type": "text",
-                    "options": []
-                }
-            ],
-            "output_pattern": "Contracts/{contract_type}/{client}/{file_name}",
-            "input_folder": "",
-            "output_folder": ""
         }
     ]
 
@@ -647,7 +822,7 @@ def create_sample_profiles():
     with open('profiles.json', 'w', encoding='utf-8') as f:
         json.dump(profiles, f, indent=4)
 
-    print("✓ Created sample profiles for users")
+    print("✓ Created sample profiles including NAPS2 scanning profile")
 
 
 def validate_project_structure():
@@ -675,21 +850,23 @@ def validate_project_structure():
 
 def main():
     """Main build function."""
-    parser = argparse.ArgumentParser(description='Build PDF Page Extractor')
+    parser = argparse.ArgumentParser(description='Build PDF Page Extractor with NAPS2')
     parser.add_argument('--clean', action='store_true', help='Clean build directories first')
     parser.add_argument('--debug', action='store_true', help='Build in debug mode')
     parser.add_argument('--no-installer', action='store_true', help='Skip installer creation')
     parser.add_argument('--installer-only', action='store_true', help='Only build installer (skip executable)')
     parser.add_argument('--validate-only', action='store_true', help='Only validate project structure')
     parser.add_argument('--create-templates', action='store_true', help='Create config and profile templates')
+    parser.add_argument('--download-naps2', action='store_true', help='Only download NAPS2 (no build)')
+    parser.add_argument('--skip-naps2', action='store_true', help='Skip NAPS2 download and integration')
 
     args = parser.parse_args()
 
     # Change to script directory
     os.chdir(Path(__file__).parent)
 
-    print("PDF Page Extractor Build Script")
-    print("=" * 40)
+    print("PDF Page Extractor with NAPS2 - Build Script")
+    print("=" * 50)
 
     # Handle validate-only option
     if args.validate_only:
@@ -702,6 +879,11 @@ def main():
         create_sample_profiles()
         return 0
 
+    # Handle download-naps2 option
+    if args.download_naps2:
+        success = download_naps2()
+        return 0 if success else 1
+
     # Clean if requested
     if args.clean:
         clean_build_dirs()
@@ -711,14 +893,32 @@ def main():
         print("✗ Project validation failed. Cannot proceed with build.")
         return 1
 
+    # Download NAPS2 unless skipped
+    if not args.skip_naps2:
+        print("\n" + "-" * 30)
+        print("Downloading NAPS2...")
+        print("-" * 30)
+        naps2_success = download_naps2()
+        if not naps2_success:
+            print("⚠ NAPS2 download failed. Continuing without NAPS2 integration.")
+            print("  You can download it later with: python build.py --download-naps2")
+    else:
+        print("⚠ Skipping NAPS2 download as requested")
+
     success = True
 
     # Build executable unless installer-only
     if not args.installer_only:
+        print("\n" + "-" * 30)
+        print("Building executable...")
+        print("-" * 30)
         success = build_executable(debug=args.debug)
 
     # Build installer if executable succeeded and not disabled
     if success and not args.no_installer:
+        print("\n" + "-" * 30)
+        print("Building installer...")
+        print("-" * 30)
         # Check if executable exists (either just built or from previous build)
         exe_path = Path('dist/PDFPageExtractor/PDFPageExtractor.exe')
         if exe_path.exists():
@@ -728,26 +928,42 @@ def main():
             print("  Build the executable first or use --installer-only after building.")
             success = False
 
-    print("\n" + "=" * 40)
+    print("\n" + "=" * 50)
     if success:
         print("✓ Build completed successfully!")
 
         # Show what was built
         if Path('dist/PDFPageExtractor/PDFPageExtractor.exe').exists():
-            print(f"✓ Executable: dist/PDFPageExtractor/PDFPageExtractor.exe")
+            exe_size = Path('dist/PDFPageExtractor/PDFPageExtractor.exe').stat().st_size / (1024 * 1024)
+            print(f"✓ Executable: dist/PDFPageExtractor/PDFPageExtractor.exe ({exe_size:.1f} MB)")
 
         installer_files = list(Path('dist/installer').glob('*.exe'))
         if installer_files:
-            print(f"✓ Installer: {installer_files[0]}")
+            installer_size = installer_files[0].stat().st_size / (1024 * 1024)
+            print(f"✓ Installer: {installer_files[0]} ({installer_size:.1f} MB)")
+
+        # Check NAPS2 integration status
+        naps2_path = Path("third_party") / NAPS2_FILENAME
+        if naps2_path.exists():
+            naps2_size = naps2_path.stat().st_size / (1024 * 1024)
+            print(f"✓ NAPS2 v{NAPS2_VERSION} included ({naps2_size:.1f} MB)")
+        else:
+            print("⚠ NAPS2 not included in installer")
 
         print("\nUsage:")
         print("- Run the installer as Administrator for system-wide installation")
+        print("- The installer will optionally install NAPS2 scanner software")
         print("- Or run the executable directly from dist/PDFPageExtractor/")
 
         # Show template creation option
         if not Path('profiles.json').exists() or not Path('config.json.template').exists():
             print("\nOptional:")
             print("- Run with --create-templates to generate sample configuration files")
+
+        print("\nNAPS2 Integration:")
+        print("- NAPS2 will be installed to scan documents directly")
+        print("- Use NAPS2 to scan → save as PDF → load in PDF Page Extractor")
+        print("- Perfect workflow for document digitization and organization")
 
     else:
         print("✗ Build failed!")
