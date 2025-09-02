@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import List, Optional
 import fitz  # PyMuPDF
 
-from models.pdf_page import PDFPageData
+from src.models.pdf_page import PDFPageData
 
 
 class PDFService:
@@ -10,12 +10,14 @@ class PDFService:
 
     @staticmethod
     def find_pdf_files(folder_path: str) -> List[Path]:
-        """Find all PDF files in a folder"""
+        """Find all PDF files in a folder, excluding those with 'done-' prefix"""
         folder = Path(folder_path)
         if not folder.exists() or not folder.is_dir():
             return []
 
-        return list(folder.glob("*.pdf"))
+        # Get all PDF files but exclude those starting with 'done-'
+        all_pdfs = list(folder.glob("*.pdf"))
+        return [pdf for pdf in all_pdfs if not pdf.name.startswith("done-")]
 
     @staticmethod
     def load_pages_from_folder(folder_path: str) -> List[PDFPageData]:

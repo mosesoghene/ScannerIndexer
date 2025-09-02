@@ -1,9 +1,12 @@
+from pathlib import Path
+
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
                                QComboBox, QPushButton, QLabel, QLineEdit,
                                QTextEdit, QCheckBox, QScrollArea, QGroupBox,
                                QFormLayout, QMessageBox, QDialog, QDialogButtonBox,
                                QListWidget, QListWidgetItem, QSplitter, QFileDialog)
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QIcon
 from typing import List, Optional
 
 from src.models.index_profile import IndexProfile, IndexField, ProfileManager
@@ -62,6 +65,16 @@ class ProfileEditor(QDialog):
         self.profile = profile.clone() if profile else IndexProfile("New Profile")
         self.field_editors = []
         self.setup_ui()
+        self.set_window_icon()
+
+    def set_window_icon(self):
+        """Set the window icon"""
+        try:
+            icon_path = Path(__file__).parent.parent / "assets" / "icon.ico"
+            if icon_path.exists():
+                self.setWindowIcon(QIcon(str(icon_path)))
+        except Exception:
+            pass
 
     def setup_ui(self):
         self.setWindowTitle("Edit Index Profile")

@@ -107,7 +107,7 @@
     "fields": [
       {
         "name": "State",
-        "value": "",
+        "value": "Lag",
         "placeholder": "",
         "required": false,
         "field_type": "text",
@@ -115,7 +115,7 @@
       },
       {
         "name": "LGA",
-        "value": "",
+        "value": "lg",
         "placeholder": "",
         "required": false,
         "field_type": "text",
@@ -123,7 +123,7 @@
       },
       {
         "name": "owner",
-        "value": "",
+        "value": "moses",
         "placeholder": "",
         "required": false,
         "field_type": "text",

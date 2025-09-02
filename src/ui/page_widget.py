@@ -3,8 +3,8 @@ from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout,
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
 
-from models.pdf_page import PDFPageData
-from services.pdf_service import PDFService
+from src.models.pdf_page import PDFPageData
+from src.services.pdf_service import PDFService
 
 
 class PageWidget(QWidget):

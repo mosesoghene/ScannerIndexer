@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from PySide6.QtWidgets import (QMainWindow, QVBoxLayout, QHBoxLayout,
                                QWidget, QPushButton, QLabel, QTextEdit,
                                QFileDialog, QMessageBox, QSplitter,
@@ -12,6 +14,8 @@ from src.ui.index_panel import IndexPanel
 from src.ui.workers import PDFLoader, PDFExporter
 from src.utils.file_utils import FileUtils
 
+from PySide6.QtGui import QIcon
+
 
 class PDFExtractorApp(QMainWindow):
     """Main application window with split-panel interface"""
@@ -25,6 +29,13 @@ class PDFExtractorApp(QMainWindow):
     def setup_ui(self):
         self.setWindowTitle("PDF Page Extractor - Index & Extract")
         self.setGeometry(100, 100, 1400, 900)
+
+        try:
+            icon_path = Path(__file__).parent.parent / "assets" / "icon.ico"
+            if icon_path.exists():
+                self.setWindowIcon(QIcon(str(icon_path)))
+        except Exception:
+            pass  # Ignore icon loading errors
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -73,24 +84,22 @@ class PDFExtractorApp(QMainWindow):
         # Main content splitter
         self.main_splitter = QSplitter(Qt.Horizontal)
 
-        # Left panel - Page list
+        # Left panel - Page list (bigger)
         self.page_list = PageListWidget()
         self.page_list.selection_changed.connect(self.on_page_selection_changed)
         self.main_splitter.addWidget(self.page_list)
 
-        # Right panel - Index assignment
+        # Right panel with vertical layout for index panel and status
+        right_panel = QWidget()
+        right_layout = QVBoxLayout()
+
+        # Index assignment panel
         self.index_panel = IndexPanel()
         self.index_panel.profile_applied.connect(self.apply_profile_to_selected)
         self.index_panel.batch_assignment_requested.connect(self.batch_assign_profile)
-        self.index_panel.profile_folders_changed.connect(self.load_from_profile_folders)
-        self.main_splitter.addWidget(self.index_panel)
+        right_layout.addWidget(self.index_panel)
 
-        # Set initial splitter sizes (60% left, 40% right)
-        self.main_splitter.setSizes([800, 600])
-
-        main_layout.addWidget(self.main_splitter)
-
-        # Bottom status area
+        # Status area (bottom right)
         status_group = QGroupBox("Status")
         status_layout = QVBoxLayout()
 
@@ -100,7 +109,15 @@ class PDFExtractorApp(QMainWindow):
         status_layout.addWidget(self.status_text)
 
         status_group.setLayout(status_layout)
-        main_layout.addWidget(status_group)
+        right_layout.addWidget(status_group)
+
+        right_panel.setLayout(right_layout)
+        self.main_splitter.addWidget(right_panel)
+
+        # Set initial splitter sizes (70% left, 30% right)
+        self.main_splitter.setSizes([1000, 400])
+
+        main_layout.addWidget(self.main_splitter)
 
         central_widget.setLayout(main_layout)
 

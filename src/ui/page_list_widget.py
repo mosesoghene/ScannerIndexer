@@ -23,60 +23,47 @@ class PageListItem(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout()
-        layout.setContentsMargins(5, 5, 5, 5)
-        layout.setSpacing(3)
+        layout.setContentsMargins(4, 4, 4, 4)
 
         # Selection checkbox
         self.checkbox = QCheckBox()
         self.checkbox.setChecked(self.page_data.selected)
         self.checkbox.toggled.connect(self.on_selection_changed)
-        layout.addWidget(self.checkbox, alignment=Qt.AlignCenter)
+        layout.addWidget(self.checkbox)
 
         # Thumbnail
         self.thumbnail_label = QLabel()
         self.thumbnail_label.setFixedSize(80, 100)
-        self.thumbnail_label.setStyleSheet("border: 1px solid #ccc; background-color: #f9f9f9;")
         self.thumbnail_label.setAlignment(Qt.AlignCenter)
-        self.thumbnail_label.setText("Loading...")
         layout.addWidget(self.thumbnail_label)
 
         # Page info
-        info_label = QLabel(f"Page {self.page_data.page_number + 1}")
-        info_label.setStyleSheet("font-size: 11px; font-weight: bold;")
+        info_label = QLabel(f"Pg {self.page_data.page_number + 1}")
         info_label.setAlignment(Qt.AlignCenter)
+        info_label.setStyleSheet("font-size: 10px; font-weight: bold;")
         layout.addWidget(info_label)
 
-        # Source file name (shortened)
+        # Source filename (truncated)
         filename = self.page_data.source_filename
         if len(filename) > 15:
             filename = filename[:12] + "..."
-
-        source_label = QLabel(filename)
-        source_label.setStyleSheet("font-size: 10px; color: #666;")
-        source_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(source_label)
+        filename_label = QLabel(filename)
+        filename_label.setAlignment(Qt.AlignCenter)
+        filename_label.setStyleSheet("font-size: 9px; color: #666;")
+        layout.addWidget(filename_label)
 
         # Profile assignment status
         self.profile_label = QLabel("No profile assigned")
-        self.profile_label.setStyleSheet("font-size: 9px; color: #999;")
         self.profile_label.setAlignment(Qt.AlignCenter)
         self.profile_label.setWordWrap(True)
         layout.addWidget(self.profile_label)
+        self.update_profile_label()
 
         self.setLayout(layout)
-        self.setFixedSize(100, 160)
-        self.setStyleSheet("""
-            QWidget {
-                border: 1px solid #ddd;
-                border-radius: 4px;
-                background-color: white;
-            }
-            QWidget:hover {
-                border-color: #2196F3;
-            }
-        """)
+        self.setFixedSize(100, 180)
 
-        self.update_profile_label()
+        # Set initial styling
+        self.update_selection_style()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -106,7 +93,112 @@ class PageListItem(QWidget):
     def on_selection_changed(self, checked: bool):
         """Handle selection state change"""
         self.page_data.selected = checked
+        self.update_selection_style()
         self.selection_changed.emit(checked)
+
+    def update_selection_style(self):
+        """Update widget styling based on selection and assignment state"""
+        if self.page_data.assigned_profile:
+            # Green for assigned
+            self.setStyleSheet("""
+                PageListItem {
+                    background-color: #e8f5e8;
+                    border: 2px solid #4CAF50;
+                    border-radius: 4px;
+                }
+            """)
+        elif self.checkbox.isChecked():
+            # Blue for selected
+            self.setStyleSheet("""
+                PageListItem {
+                    background-color: #e3f2fd;
+                    border: 2px solid #2196F3;
+                    border-radius: 4px;
+                }
+            """)
+        else:
+            # Default styling
+            self.setStyleSheet("""
+                PageListItem {
+                    background-color: white;
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                }
+            """)
+
+    def set_selected(self, selected: bool):
+        """Programmatically set selection"""
+        self.checkbox.setChecked(selected)
+        self.update_selection_style()
+
+    def assign_profile(self, profile_name: str):
+        """Assign a profile to this page"""
+        self.page_data.assigned_profile = profile_name
+        self.update_profile_label()
+        self.set_assigned_state(True)
+        self.update_selection_style()
+
+    def set_assigned_state(self, assigned: bool):
+        """Set the assigned state and disable selection if assigned"""
+        if assigned:
+            self.checkbox.setEnabled(False)
+            self.checkbox.setChecked(False)
+            self.update_selection_style()
+        else:
+            self.checkbox.setEnabled(True)
+            self.update_selection_style()
+
+    def update_selection_style(self):
+        """Update widget styling based on selection and assignment state"""
+        if self.page_data.assigned_profile:
+            # Green for assigned
+            self.setStyleSheet("""
+                PageListItem {
+                    background-color: #e8f5e8;
+                    border: 2px solid #4CAF50;
+                    border-radius: 4px;
+                }
+            """)
+        elif self.checkbox.isChecked():
+            # Blue for selected
+            self.setStyleSheet("""
+                PageListItem {
+                    background-color: #e3f2fd;
+                    border: 2px solid #2196F3;
+                    border-radius: 4px;
+                }
+            """)
+        else:
+            # Default styling
+            self.setStyleSheet("""
+                PageListItem {
+                    background-color: white;
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                }
+            """)
+
+    def set_selected(self, selected: bool):
+        """Programmatically set selection"""
+        self.checkbox.setChecked(selected)
+        self.update_selection_style()
+
+    def assign_profile(self, profile_name: str):
+        """Assign a profile to this page"""
+        self.page_data.assigned_profile = profile_name
+        self.update_profile_label()
+        self.set_assigned_state(True)
+        self.update_selection_style()
+
+    def set_assigned_state(self, assigned: bool):
+        """Set the assigned state and disable selection if assigned"""
+        if assigned:
+            self.checkbox.setEnabled(False)
+            self.checkbox.setChecked(False)
+            self.update_selection_style()
+        else:
+            self.checkbox.setEnabled(True)
+            self.update_selection_style()
 
     def set_selected(self, selected: bool):
         """Programmatically set selection"""
@@ -166,6 +258,13 @@ class PageListWidget(QWidget):
         super().__init__()
         self.page_items: List[PageListItem] = []
         self.setup_ui()
+
+    def get_page_item_by_data(self, page_data: PDFPageData) -> 'PageListItem':
+        """Get the PageListItem widget for given page data"""
+        for item in self.page_items:
+            if item.page_data == page_data:
+                return item
+        return None
 
     def setup_ui(self):
         layout = QVBoxLayout()
@@ -288,9 +387,29 @@ class PageListWidget(QWidget):
         for item in self.page_items:
             if item.is_selected():
                 item.assign_profile(profile_name)
+                # Mark source PDF as processed
+                self.mark_source_as_processed(item.page_data.source_path)
                 selected_count += 1
 
         return selected_count
+
+    def mark_source_as_processed(self, source_path: str):
+        """Mark source PDF as processed by adding 'done-' prefix"""
+        from pathlib import Path
+        import os
+
+        path = Path(source_path)
+        if not path.name.startswith("done-"):
+            new_name = f"done-{path.name}"
+            new_path = path.parent / new_name
+            try:
+                os.rename(str(path), str(new_path))
+                # Update all page items with this source path
+                for item in self.page_items:
+                    if item.page_data.source_path == source_path:
+                        item.page_data.source_path = str(new_path)
+            except OSError:
+                pass  # Handle file in use or permission errors silently
 
     def apply_filter(self, filter_text: str):
         """Filter pages based on search text"""

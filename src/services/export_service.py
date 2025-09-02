@@ -1,9 +1,8 @@
-import os
 from pathlib import Path
 from typing import List
 import fitz  # PyMuPDF
 
-from models.pdf_page import ExportJob
+from src.models.pdf_page import ExportJob
 
 
 class ExportService:
