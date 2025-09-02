@@ -38,16 +38,13 @@ class FieldEditor(QWidget):
             self.input.addItems(self.field.options)
             self.input.setCurrentText(self.field.value)
             self.input.currentTextChanged.connect(self.on_value_changed)
+            # Allow adding new values by typing
+            self.input.lineEdit().returnPressed.connect(self.add_new_dropdown_value)
         elif self.field.field_type == "date":
             self.input = QLineEdit(self.field.value)
             self.input.setPlaceholderText("dd/mm/yyyy or dd/mm/yy")
             self.input.textChanged.connect(self.on_value_changed)
-        elif self.field.field_type in ["folder", "filename"]:
-            self.input = QLineEdit(self.field.value)
-            placeholder = "dd_mm_yyyy or dd_mm_yy format" if self.field.field_type == "folder" else "filename_dd_mm_yyyy"
-            self.input.setPlaceholderText(placeholder)
-            self.input.textChanged.connect(self.on_value_changed)
-        else:
+        else:  # text type (default)
             self.input = QLineEdit(self.field.value)
             self.input.setPlaceholderText(self.field.placeholder)
             self.input.textChanged.connect(self.on_value_changed)
@@ -60,9 +57,6 @@ class FieldEditor(QWidget):
         if self.field.field_type == "date":
             # Auto-format date input
             value = self.format_date_input(value)
-        elif self.field.field_type in ["folder", "filename"]:
-            # Auto-format folder/filename with underscores
-            value = self.format_folder_filename_input(value)
 
         self.field.value = value
         self.field_changed.emit()
@@ -80,13 +74,16 @@ class FieldEditor(QWidget):
 
         return cleaned
 
-    def format_folder_filename_input(self, value: str) -> str:
-        """Format folder/filename input with underscores"""
-        # Replace spaces and slashes with underscores
-        formatted = re.sub(r'[\s/]', '_', value)
-        # Remove invalid filename characters
-        formatted = re.sub(r'[<>:"/\\|?*]', '', formatted)
-        return formatted
+    def add_new_dropdown_value(self):
+        """Add new value to dropdown options when user types and presses Enter"""
+        if isinstance(self.input, QComboBox):
+            current_text = self.input.currentText().strip()
+            if current_text and current_text not in self.field.options:
+                self.field.options.append(current_text)
+                self.input.addItem(current_text)
+                self.field_changed.emit()  # Trigger save
+
+
 
     def get_value(self) -> str:
         """Get current field value"""
@@ -98,9 +95,13 @@ class FieldEditor(QWidget):
 class ProfileEditor(QDialog):
     """Dialog for creating/editing index profiles"""
 
-    def __init__(self, profile: Optional[IndexProfile] = None, parent=None):
+    def __init__(self, profile: Optional[IndexProfile] = None, edit_mode: bool = False, parent=None):
         super().__init__(parent)
-        self.profile = profile.clone() if profile else IndexProfile("New Profile")
+        # Only clone if we're creating a new profile, not editing existing one
+        if edit_mode and profile:
+            self.profile = profile  # Edit the original profile directly
+        else:
+            self.profile = profile.clone() if profile else IndexProfile("New Profile")
         self.field_editors = []
         self.setup_ui()
         self.set_window_icon()
@@ -231,11 +232,19 @@ class ProfileEditor(QDialog):
 
             # Field type dropdown
             type_combo = QComboBox()
-            type_combo.addItems(["text", "date", "folder", "filename", "dropdown"])
+            type_combo.addItems(["text", "date", "dropdown"])
             type_combo.setCurrentText(field.field_type)
-            type_combo.currentTextChanged.connect(lambda text, f=field: setattr(f, 'field_type', text))
+            type_combo.currentTextChanged.connect(lambda text, f=field: self.on_field_type_changed(f, text))
             field_layout.addWidget(QLabel("Type:"))
             field_layout.addWidget(type_combo)
+
+            # Options editor for dropdown fields
+            options_btn = QPushButton("Options...")
+            options_btn.clicked.connect(lambda _, f=field: self.edit_dropdown_options(f))
+            options_btn.setVisible(field.field_type == "dropdown")
+            field_layout.addWidget(options_btn)
+            # Store reference to button for showing/hiding
+            setattr(field, '_options_btn', options_btn)
 
             # Field placeholder
             placeholder_input = QLineEdit(field.placeholder)
@@ -256,6 +265,71 @@ class ProfileEditor(QDialog):
 
             field_widget.setLayout(field_layout)
             self.fields_layout.addWidget(field_widget)
+
+    def on_field_type_changed(self, field: IndexField, field_type: str):
+        """Handle field type changes"""
+        field.field_type = field_type
+
+        # Show/hide options button based on field type
+        if hasattr(field, '_options_btn'):
+            field._options_btn.setVisible(field_type == "dropdown")
+
+    def edit_dropdown_options(self, field: IndexField):
+        """Edit dropdown options for a field"""
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QListWidget, QHBoxLayout, QPushButton, QInputDialog
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Edit Options for {field.name}")
+        dialog.setModal(True)
+        dialog.resize(400, 300)
+
+        layout = QVBoxLayout()
+
+        # Options list
+        options_list = QListWidget()
+        options_list.addItems(field.options)
+        layout.addWidget(QLabel("Current Options:"))
+        layout.addWidget(options_list)
+
+        # Buttons
+        buttons_layout = QHBoxLayout()
+
+        add_btn = QPushButton("Add Option")
+        add_btn.clicked.connect(lambda: self.add_dropdown_option(options_list, field))
+        buttons_layout.addWidget(add_btn)
+
+        remove_btn = QPushButton("Remove Selected")
+        remove_btn.clicked.connect(lambda: self.remove_dropdown_option(options_list, field))
+        buttons_layout.addWidget(remove_btn)
+
+        buttons_layout.addStretch()
+        layout.addLayout(buttons_layout)
+
+        # Dialog buttons
+        dialog_buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        dialog_buttons.accepted.connect(dialog.accept)
+        dialog_buttons.rejected.connect(dialog.reject)
+        layout.addWidget(dialog_buttons)
+
+        dialog.setLayout(layout)
+
+        if dialog.exec() == QDialog.Accepted:
+            # Update field options
+            field.options = [options_list.item(i).text() for i in range(options_list.count())]
+
+    def add_dropdown_option(self, options_list: QListWidget, field: IndexField):
+        """Add a new option to dropdown field"""
+        from PySide6.QtWidgets import QInputDialog
+
+        text, ok = QInputDialog.getText(self, "Add Option", "Enter new option:")
+        if ok and text.strip():
+            options_list.addItem(text.strip())
+
+    def remove_dropdown_option(self, options_list: QListWidget, field: IndexField):
+        """Remove selected option from dropdown field"""
+        current_row = options_list.currentRow()
+        if current_row >= 0:
+            options_list.takeItem(current_row)
 
     def accept(self):
         """Handle dialog acceptance"""
@@ -496,19 +570,21 @@ class IndexPanel(QWidget):
             QMessageBox.information(self, "No Profile", "Please select a profile to edit.")
             return
 
-        dialog = ProfileEditor(self.current_profile)
+        # Find the actual profile object in the manager (not a copy)
+        original_profile = self.profile_manager.get_profile(self.current_profile.name)
+        if not original_profile:
+            QMessageBox.warning(self, "Profile Error", "Could not find the original profile.")
+            return
+
+        dialog = ProfileEditor(original_profile, edit_mode=True)
         if dialog.exec() == QDialog.Accepted:
-            edited_profile = dialog.get_profile()
-
-            # Replace in manager
-            for i, profile in enumerate(self.profile_manager.profiles):
-                if profile.name == self.current_profile.name:
-                    self.profile_manager.profiles[i] = edited_profile
-                    break
-
+            # The dialog modified the original profile directly
             self.profile_manager.save_profiles()
             self.refresh_profiles()
-            self.profile_combo.setCurrentText(edited_profile.name)
+            self.profile_combo.setCurrentText(original_profile.name)
+            # Refresh the current profile reference
+            self.current_profile = original_profile
+            self.setup_field_editors()
 
     def delete_profile(self):
         """Delete the current profile"""
@@ -544,6 +620,12 @@ class IndexPanel(QWidget):
         """Request batch assignment of current profile"""
         if not self.current_profile:
             QMessageBox.information(self, "No Profile", "Please select a profile first.")
+            return
+
+        # Validate fields first
+        valid, errors = self.current_profile.validate_all_fields()
+        if not valid:
+            QMessageBox.warning(self, "Validation Error", "\n".join(errors))
             return
 
         self.batch_assignment_requested.emit(self.current_profile.name)

@@ -262,12 +262,6 @@ assets_path = project_root / 'src' / 'assets'
 if assets_path.exists():
     datas.append((str(assets_path), 'assets'))
 
-# Add any existing config files
-config_files = ['profiles.json']
-for config_file in config_files:
-    config_path = project_root / config_file
-    if config_path.exists():
-        datas.append((str(config_path), '.'))
 
 # Define hidden imports for PDF processing
 hiddenimports = [
@@ -501,7 +495,7 @@ Source: "dist\\PDFPageExtractor\\*"; DestDir: "{app}"; Flags: ignoreversion recu
 
     # Add optional files conditionally
     if has_profiles:
-        inno_script += '\nSource: "profiles.json"; DestDir: "{app}"; Flags: ignoreversion'
+        inno_script += '\nSource: "profiles.json"; DestDir: "{app}"; Flags: ignoreversion onlyifdoesntexist'
 
     if has_config_template:
         inno_script += '\nSource: "config.json.template"; DestDir: "{app}"; Flags: ignoreversion'

@@ -13,6 +13,7 @@ class PDFPageData:
     custom_tag: str = ""
     selected: bool = False
     assigned_profile: Optional[str] = None  # Name of assigned index profile
+    batch_id: Optional[str] = None  # For grouping pages into single files
 
     @property
     def source_filename(self) -> str:

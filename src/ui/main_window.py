@@ -1,3 +1,4 @@
+from collections import defaultdict
 from pathlib import Path
 
 from PySide6.QtWidgets import (QMainWindow, QVBoxLayout, QHBoxLayout,
@@ -206,9 +207,24 @@ class PDFExtractorApp(QMainWindow):
         self.update_export_button_state()
 
     def batch_assign_profile(self, profile_name: str):
-        """Show batch assignment dialog for profile"""
-        # For now, just apply to all selected pages
-        self.apply_profile_to_selected(profile_name, self.index_panel.get_current_profile())
+        """Assign profile to selected pages for batch export (single file per batch)"""
+        selected_pages = self.page_list.get_selected_pages()
+
+        if not selected_pages:
+            QMessageBox.information(self, "No Selection", "Please select some pages first.")
+            return
+
+        # Get the current profile
+        profile = self.index_panel.get_current_profile()
+        if not profile:
+            return
+
+        # Assign profile to selected pages and mark them as batch
+        count = self.page_list.assign_profile_to_selected_batch(profile_name, profile)
+
+        self.status_text.append(
+            f"✓ Batch assigned profile '{profile_name}' to {count} pages (will export as single file)")
+        self.update_export_button_state()
 
     def export_all_assigned(self):
         """Export all pages that have assigned profiles"""
@@ -221,8 +237,7 @@ class PDFExtractorApp(QMainWindow):
                                     "No pages have been assigned index profiles yet.")
             return
 
-        # Group pages by their assigned profile and output path
-        from collections import defaultdict
+        # Group pages by their batch_id if they have one, otherwise individual files
         profile_groups = defaultdict(list)
         profile_manager = self.index_panel.profile_manager
 
@@ -237,14 +252,23 @@ class PDFExtractorApp(QMainWindow):
                                         "Please set an output folder in the profile or use 'Set Output Folder' button.")
                     return
 
-                # Generate output path using profile (without page number)
+                # Generate base output path using profile
                 output_path = profile.generate_output_path(output_base)
 
                 if not output_path.endswith('.pdf'):
                     output_path += '.pdf'
 
-                # Group pages by their output path
-                profile_groups[output_path].append(page_data)
+                # Group by batch_id if present, otherwise use individual paths
+                if hasattr(page_data, 'batch_id') and page_data.batch_id:
+                    # For batch items, use batch_id as the grouping key (before .pdf extension)
+                    base_path = output_path.replace('.pdf', '')
+                    group_key = f"{base_path}_{page_data.batch_id}.pdf"
+                else:
+                    # For individual items, make each page unique
+                    base_path = output_path.replace('.pdf', '')
+                    group_key = f"{base_path}_page_{page_data.page_number}.pdf"
+
+                profile_groups[group_key].append(page_data)
 
         # Create batch export jobs - one job per group
         export_jobs = []

@@ -1,3 +1,4 @@
+import os
 import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
@@ -68,9 +69,9 @@ class IndexProfile:
             if field.field_type == "date" and value != "unknown":
                 # Convert dd/mm/yyyy to dd_mm_yyyy for folder names
                 value = value.replace('/', '_')
-            elif field.field_type in ["folder", "filename"] and value != "unknown":
-                # Ensure underscores for folder/filename types
-                value = re.sub(r'[\s/]', '_', value)
+
+            # Clean value for use in file paths (remove invalid characters)
+            value = re.sub(r'[<>:"/\\|?*]', '_', value)
 
             replacements[key] = value
 
@@ -154,7 +155,8 @@ class ProfileManager:
     """Manages saving/loading of index profiles"""
 
     def __init__(self, profiles_file: str = "profiles.json"):
-        self.profiles_file = Path(profiles_file)
+        app_data_dir = get_app_data_dir()
+        self.profiles_file = app_data_dir / profiles_file
         self.profiles: List[IndexProfile] = []
         self.load_profiles()
 
@@ -169,7 +171,7 @@ class ProfileManager:
                 print(f"Error loading profiles: {e}")
                 self.profiles = []
 
-        # Add default profiles if none exist
+        # Create default profiles if no user profiles exist
         if not self.profiles:
             self.create_default_profiles()
 
@@ -208,8 +210,8 @@ class ProfileManager:
             description="Simple document indexing",
             output_pattern="{document_type}/{file_name}"
         )
-        basic.add_field(IndexField("Document Type", placeholder="e.g., contracts, invoices"))
-        basic.add_field(IndexField("File Name", placeholder="Output filename", required=True))
+        basic.add_field(IndexField("Document Type", placeholder="e.g., contracts, invoices", field_type="text"))
+        basic.add_field(IndexField("File Name", placeholder="Output filename", required=True, field_type="text"))
 
         # Invoice profile
         invoice = IndexProfile(
@@ -217,10 +219,11 @@ class ProfileManager:
             description="For processing invoices",
             output_pattern="{vendor}/{year}/{month}/{invoice_number}"
         )
-        invoice.add_field(IndexField("Vendor", placeholder="Vendor name", required=True))
-        invoice.add_field(IndexField("Invoice Number", placeholder="Invoice #", required=True))
-        invoice.add_field(IndexField("Year", placeholder="2024", required=True))
-        invoice.add_field(IndexField("Month", placeholder="01-12", required=True))
+        invoice.add_field(IndexField("Vendor", placeholder="Vendor name", required=True, field_type="text"))
+        invoice.add_field(IndexField("Invoice Number", placeholder="Invoice #", required=True, field_type="text"))
+        invoice.add_field(IndexField("Year", placeholder="2024", required=True, field_type="text"))
+        invoice.add_field(IndexField("Month", placeholder="01-12", required=True, field_type="dropdown",
+                                     options=["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"]))
 
         # Contract profile
         contract = IndexProfile(
@@ -228,9 +231,26 @@ class ProfileManager:
             description="For organizing contracts",
             output_pattern="{contract_type}/{client}/{file_name}"
         )
-        contract.add_field(IndexField("Contract Type", "Service Agreement", "Contract type"))
-        contract.add_field(IndexField("Client", placeholder="Client name", required=True))
-        contract.add_field(IndexField("File Name", placeholder="Contract filename", required=True))
+        contract.add_field(IndexField("Contract Type", "Service Agreement", "Contract type", field_type="dropdown",
+                                      options=["Service Agreement", "Purchase Order", "NDA", "Employment Contract",
+                                               "Other"]))
+        contract.add_field(IndexField("Client", placeholder="Client name", required=True, field_type="text"))
+        contract.add_field(IndexField("File Name", placeholder="Contract filename", required=True, field_type="text"))
 
         self.profiles.extend([basic, invoice, contract])
         self.save_profiles()
+
+
+def get_app_data_dir():
+    """Get the application data directory"""
+    if os.name == 'nt':  # Windows
+        app_data = os.environ.get('APPDATA')
+        if app_data:
+            app_dir = Path(app_data) / "PDFPageExtractor"
+        else:
+            app_dir = Path.home() / "AppData" / "Roaming" / "PDFPageExtractor"
+    else:  # macOS/Linux
+        app_dir = Path.home() / ".config" / "PDFPageExtractor"
+
+    app_dir.mkdir(parents=True, exist_ok=True)
+    return app_dir

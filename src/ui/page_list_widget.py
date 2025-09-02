@@ -407,6 +407,27 @@ class PageListWidget(QWidget):
 
         return selected_count
 
+    def assign_profile_to_selected_batch(self, profile_name: str, profile) -> int:
+        """Assign a profile to selected pages and mark them as a batch group"""
+        from src.models.index_profile import IndexProfile
+
+        selected_items = [item for item in self.page_items if item.is_selected()]
+
+        if not selected_items:
+            return 0
+
+        # Create a unique batch ID for this group
+        import time
+        batch_id = f"batch_{int(time.time())}"
+
+        # Assign profile and batch info to all selected pages
+        for item in selected_items:
+            item.page_data.assigned_profile = profile_name
+            item.page_data.batch_id = batch_id  # Add batch grouping
+            item.assign_profile(profile_name)
+
+        return len(selected_items)
+
     def mark_source_as_processed(self, source_path: str):
         """Mark source PDF as processed by adding 'done-' prefix"""
         from pathlib import Path

@@ -40,7 +40,6 @@ Name: "installnaps2"; Description: "Install NAPS2 Scanner Software (Recommended)
 
 [Files]
 Source: "dist\PDFPageExtractor\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "profiles.json"; DestDir: "{app}"; Flags: ignoreversion
 Source: "third_party\naps2-8.2.1-win-x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Tasks: installnaps2
 
 [Icons]

@@ -73,9 +73,17 @@ class ExportService:
         errors = []
 
         for i, job in enumerate(jobs):
-            # Check if source file exists
-            if not Path(job.source_path).exists():
-                errors.append(f"Job {i + 1}: Source file not found: {job.source_path}")
+            # Skip source file validation for batch jobs
+            if job.source_path != "BATCH":
+                # Check if source file exists
+                if not Path(job.source_path).exists():
+                    errors.append(f"Job {i + 1}: Source file not found: {job.source_path}")
+            else:
+                # For batch jobs, validate that all pages in the group exist
+                if hasattr(job, 'pages_group'):
+                    for page_data in job.pages_group:
+                        if not Path(page_data.source_path).exists():
+                            errors.append(f"Job {i + 1}: Batch source file not found: {page_data.source_path}")
 
             # Check if output directory can be created
             try:
