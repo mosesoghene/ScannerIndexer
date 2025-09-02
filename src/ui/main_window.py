@@ -10,6 +10,7 @@ from src.models.index_profile import IndexProfile
 from src.ui.page_list_widget import PageListWidget
 from src.ui.index_panel import IndexPanel
 from src.ui.workers import PDFLoader, PDFExporter
+from src.utils.file_utils import FileUtils
 
 
 class PDFExtractorApp(QMainWindow):
@@ -19,6 +20,7 @@ class PDFExtractorApp(QMainWindow):
         super().__init__()
         self.output_folder = None
         self.setup_ui()
+        self.auto_load_from_profiles()
 
     def setup_ui(self):
         self.setWindowTitle("PDF Page Extractor - Index & Extract")
@@ -36,7 +38,10 @@ class PDFExtractorApp(QMainWindow):
         self.browse_btn.clicked.connect(self.browse_folder)
         toolbar_layout.addWidget(self.browse_btn)
 
-
+        # ADD MISSING OUTPUT FOLDER BUTTON
+        self.output_btn = QPushButton("Set Output Folder")
+        self.output_btn.clicked.connect(self.set_output_folder)
+        toolbar_layout.addWidget(self.output_btn)
 
         self.output_label = QLabel("Output: Not set")
         toolbar_layout.addWidget(self.output_label)
@@ -77,6 +82,7 @@ class PDFExtractorApp(QMainWindow):
         self.index_panel = IndexPanel()
         self.index_panel.profile_applied.connect(self.apply_profile_to_selected)
         self.index_panel.batch_assignment_requested.connect(self.batch_assign_profile)
+        self.index_panel.profile_folders_changed.connect(self.load_from_profile_folders)
         self.main_splitter.addWidget(self.index_panel)
 
         # Set initial splitter sizes (60% left, 40% right)
@@ -106,19 +112,48 @@ class PDFExtractorApp(QMainWindow):
         self.status_text.append("4. Apply profile to selected pages")
         self.status_text.append("5. Set output folder and export")
 
+    def load_from_profile_folders(self, input_folder: str, output_folder: str):
+        """Load PDFs from profile input folder and set output folder"""
+        if input_folder:
+            self.status_text.append(f"Loading PDFs from profile input folder: {input_folder}")
+            self.load_pdfs(input_folder)
+
+        if output_folder:
+            self.output_folder = output_folder
+            self.output_label.setText(f"Output: {output_folder}")
+            self.update_export_button_state()
+
+    def auto_load_from_profiles(self):
+        """Auto-load PDFs from profile input folders if available"""
+        profile_manager = self.index_panel.profile_manager
+
+        # Check if any profile has an input folder set
+        for profile in profile_manager.profiles:
+            if profile.input_folder and profile.input_folder.strip():
+                self.status_text.append(f"Auto-loading from profile '{profile.name}' input folder...")
+                self.load_pdfs(profile.input_folder)
+                break
+
     def browse_folder(self):
         """Open folder dialog and load PDFs"""
         folder = QFileDialog.getExistingDirectory(self, "Select PDF Folder")
         if folder:
             self.load_pdfs(folder)
 
-
+    def set_output_folder(self):
+        """Set the output folder for exports"""
+        folder = QFileDialog.getExistingDirectory(self, "Select Output Folder")
+        if folder:
+            self.output_folder = folder
+            self.output_label.setText(f"Output: {folder}")
+            self.update_export_button_state()
 
     def load_pdfs(self, folder_path: str):
         """Load PDFs from folder in background thread"""
         self.page_list.clear_pages()
         self.status_text.clear()
         self.status_text.append("Loading PDFs from folder...")
+        self.status_text.append(f"Scanning: {folder_path}")
 
         # Disable buttons during loading
         self.set_buttons_enabled(False)
@@ -184,19 +219,51 @@ class PDFExtractorApp(QMainWindow):
 
         for page_data in pages_to_export:
             profile = profile_manager.get_profile(page_data.assigned_profile)
-            if profile and profile.output_folder:  # CHECK OUTPUT FOLDER EXISTS
+            if profile:
+                # Use profile's output folder if set, otherwise use app's output folder
+                output_base = profile.output_folder or self.output_folder
+
+                if not output_base:
+                    QMessageBox.warning(self, "No Output Folder",
+                                        "Please set an output folder in the profile or use 'Set Output Folder' button.")
+                    return
+
                 # Generate output path using profile
-                output_path = profile.generate_output_path(profile.output_folder)  # USE PROFILE'S OUTPUT FOLDER
-                if output_path.endswith('.pdf'):
-                    output_path = output_path[:-4]
-                output_path += f"_page_{page_data.page_number + 1}.pdf"
+                output_path = profile.generate_output_path(output_base)
+
+                # Sanitize the filename
+                sanitized_filename = FileUtils.sanitize_filename(
+                    f"{output_path}_page_{page_data.page_number + 1}"
+                )
+
+                if not sanitized_filename.endswith('.pdf'):
+                    sanitized_filename += '.pdf'
+
+                # Ensure unique filename
+                final_output_path = FileUtils.ensure_unique_filename(sanitized_filename)
 
                 job = ExportJob(
                     source_path=page_data.source_path,
                     page_number=page_data.page_number,
-                    output_path=output_path
+                    output_path=final_output_path
                 )
                 export_jobs.append(job)
+
+        if not export_jobs:
+            QMessageBox.information(self, "No Valid Jobs",
+                                    "No valid export jobs could be created.")
+            return
+
+        # Start export
+        self.status_text.append(f"Starting export of {len(export_jobs)} pages...")
+        self.set_buttons_enabled(False)
+
+        self.exporter = PDFExporter(export_jobs)
+        self.exporter.progress.connect(self.status_text.append)
+        self.exporter.export_complete.connect(self.on_export_complete)
+        self.exporter.error.connect(self.on_export_error)
+        self.exporter.finished.connect(lambda: self.set_buttons_enabled(True))
+        self.exporter.start()
 
     def on_export_complete(self, results):
         """Handle successful export completion"""
@@ -221,17 +288,19 @@ class PDFExtractorApp(QMainWindow):
         """Enable/disable export button based on current state"""
         has_assigned_pages = any(p.assigned_profile for p in self.page_list.get_all_pages())
 
-        # Check if assigned profiles have output folders
+        # Check if assigned profiles have output folders OR app has output folder
         all_pages = self.page_list.get_all_pages()
         profile_manager = self.index_panel.profile_manager
-        has_valid_outputs = False
+        has_valid_outputs = bool(self.output_folder)  # App has output folder
 
-        for page in all_pages:
-            if page.assigned_profile:
-                profile = profile_manager.get_profile(page.assigned_profile)
-                if profile and profile.output_folder:
-                    has_valid_outputs = True
-                    break
+        if not has_valid_outputs:
+            # Check if assigned profiles have output folders
+            for page in all_pages:
+                if page.assigned_profile:
+                    profile = profile_manager.get_profile(page.assigned_profile)
+                    if profile and profile.output_folder:
+                        has_valid_outputs = True
+                        break
 
         self.export_btn.setEnabled(has_assigned_pages and has_valid_outputs)
 

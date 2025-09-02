@@ -99,11 +99,11 @@
     ]
   },
   {
-    "name": "Demo Profile",
+    "name": "Demo Profile (Copy)",
     "description": "",
     "output_pattern": "{State}/{LGA}/{owner}",
-    "input_folder": "",
-    "output_folder": "",
+    "input_folder": "C:/Users/moghene/Documents/naps2scans",
+    "output_folder": "C:/Users/moghene/Documents/GroveScan",
     "fields": [
       {
         "name": "State",

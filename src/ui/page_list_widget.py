@@ -1,6 +1,7 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
                                QListWidget, QListWidgetItem, QPushButton,
-                               QLabel, QCheckBox, QLineEdit, QGroupBox, QScrollArea)
+                               QLabel, QCheckBox, QLineEdit, QGroupBox,
+                               QScrollArea, QGridLayout)
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
 from typing import List
@@ -22,64 +23,60 @@ class PageListItem(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout()
+        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(3)
 
-        # Selection controls (same as before)
-        controls_group = QGroupBox("Page Selection")
-        controls_layout = QVBoxLayout()
+        # Selection checkbox
+        self.checkbox = QCheckBox()
+        self.checkbox.setChecked(self.page_data.selected)
+        self.checkbox.toggled.connect(self.on_selection_changed)
+        layout.addWidget(self.checkbox, alignment=Qt.AlignCenter)
 
-        # Bulk selection buttons
-        bulk_layout = QHBoxLayout()
+        # Thumbnail
+        self.thumbnail_label = QLabel()
+        self.thumbnail_label.setFixedSize(80, 100)
+        self.thumbnail_label.setStyleSheet("border: 1px solid #ccc; background-color: #f9f9f9;")
+        self.thumbnail_label.setAlignment(Qt.AlignCenter)
+        self.thumbnail_label.setText("Loading...")
+        layout.addWidget(self.thumbnail_label)
 
-        select_all_btn = QPushButton("Select All")
-        select_all_btn.clicked.connect(self.select_all)
-        bulk_layout.addWidget(select_all_btn)
+        # Page info
+        info_label = QLabel(f"Page {self.page_data.page_number + 1}")
+        info_label.setStyleSheet("font-size: 11px; font-weight: bold;")
+        info_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(info_label)
 
-        clear_all_btn = QPushButton("Clear All")
-        clear_all_btn.clicked.connect(self.clear_all)
-        bulk_layout.addWidget(clear_all_btn)
+        # Source file name (shortened)
+        filename = self.page_data.source_filename
+        if len(filename) > 15:
+            filename = filename[:12] + "..."
 
-        invert_btn = QPushButton("Invert Selection")
-        invert_btn.clicked.connect(self.invert_selection)
-        bulk_layout.addWidget(invert_btn)
+        source_label = QLabel(filename)
+        source_label.setStyleSheet("font-size: 10px; color: #666;")
+        source_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(source_label)
 
-        bulk_layout.addStretch()
-        controls_layout.addLayout(bulk_layout)
-
-        # Filter/search
-        filter_layout = QHBoxLayout()
-        filter_layout.addWidget(QLabel("Filter:"))
-
-        self.filter_input = QLineEdit()
-        self.filter_input.setPlaceholderText("Search by filename or page number...")
-        self.filter_input.textChanged.connect(self.apply_filter)
-        filter_layout.addWidget(self.filter_input)
-
-        controls_layout.addLayout(filter_layout)
-
-        # Selection count
-        self.count_label = QLabel("0 of 0 pages selected")
-        controls_layout.addWidget(self.count_label)
-
-        controls_group.setLayout(controls_layout)
-        layout.addWidget(controls_group)
-
-        # Pages grid (CHANGED FROM LIST TO SCROLL AREA)
-        pages_group = QGroupBox("Pages")
-        pages_layout = QVBoxLayout()
-
-        # Create scroll area with grid widget
-        self.pages_scroll = QScrollArea()
-        self.pages_widget = QWidget()
-        from PySide6.QtWidgets import QGridLayout
-        self.pages_grid = QGridLayout(self.pages_widget)
-        self.pages_scroll.setWidget(self.pages_widget)
-        self.pages_scroll.setWidgetResizable(True)
-
-        pages_layout.addWidget(self.pages_scroll)
-        pages_group.setLayout(pages_layout)
-        layout.addWidget(pages_group)
+        # Profile assignment status
+        self.profile_label = QLabel("No profile assigned")
+        self.profile_label.setStyleSheet("font-size: 9px; color: #999;")
+        self.profile_label.setAlignment(Qt.AlignCenter)
+        self.profile_label.setWordWrap(True)
+        layout.addWidget(self.profile_label)
 
         self.setLayout(layout)
+        self.setFixedSize(100, 160)
+        self.setStyleSheet("""
+            QWidget {
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                background-color: white;
+            }
+            QWidget:hover {
+                border-color: #2196F3;
+            }
+        """)
+
+        self.update_profile_label()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -101,7 +98,7 @@ class PageListItem(QWidget):
         if img_data:
             pixmap = QPixmap()
             pixmap.loadFromData(img_data)
-            pixmap = pixmap.scaled(60, 80, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            pixmap = pixmap.scaled(78, 98, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             self.thumbnail_label.setPixmap(pixmap)
         else:
             self.thumbnail_label.setText(f"{self.page_data.page_number + 1}")
@@ -128,26 +125,40 @@ class PageListItem(QWidget):
     def update_profile_label(self):
         """Update the profile assignment label"""
         if self.page_data.assigned_profile:
-            self.profile_label.setText(f"Profile: {self.page_data.assigned_profile}")
-            self.profile_label.setStyleSheet("color: #2196F3; font-size: 10px; font-weight: bold;")
+            self.profile_label.setText(f"✓ {self.page_data.assigned_profile}")
+            self.profile_label.setStyleSheet("color: #2196F3; font-size: 9px; font-weight: bold;")
         else:
             self.profile_label.setText("No profile assigned")
-            self.profile_label.setStyleSheet("color: #999; font-size: 10px;")
+            self.profile_label.setStyleSheet("color: #999; font-size: 9px;")
 
     def set_assigned_state(self, assigned: bool):
         """Set the assigned state and disable selection if assigned"""
         if assigned:
             self.checkbox.setEnabled(False)
             self.checkbox.setChecked(False)
-            self.setStyleSheet("QWidget { background-color: #f0f0f0; }")
-            self.profile_label.setStyleSheet("color: #4CAF50; font-size: 10px; font-weight: bold;")
+            self.setStyleSheet("""
+                QWidget {
+                    border: 2px solid #4CAF50;
+                    border-radius: 4px;
+                    background-color: #f8fff8;
+                }
+            """)
         else:
             self.checkbox.setEnabled(True)
-            self.setStyleSheet("")
+            self.setStyleSheet("""
+                QWidget {
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                    background-color: white;
+                }
+                QWidget:hover {
+                    border-color: #2196F3;
+                }
+            """)
 
 
 class PageListWidget(QWidget):
-    """Widget for displaying pages in a list format with bulk selection"""
+    """Widget for displaying pages in a grid format with bulk selection"""
 
     selection_changed = Signal()  # Emitted when selection changes
 
@@ -159,7 +170,7 @@ class PageListWidget(QWidget):
     def setup_ui(self):
         layout = QVBoxLayout()
 
-        # Selection controls (same as before)
+        # Selection controls
         controls_group = QGroupBox("Page Selection")
         controls_layout = QVBoxLayout()
 
@@ -199,15 +210,16 @@ class PageListWidget(QWidget):
         controls_group.setLayout(controls_layout)
         layout.addWidget(controls_group)
 
-        # Pages grid (CHANGED FROM LIST TO SCROLL AREA)
+        # Pages grid
         pages_group = QGroupBox("Pages")
         pages_layout = QVBoxLayout()
 
         # Create scroll area with grid widget
         self.pages_scroll = QScrollArea()
         self.pages_widget = QWidget()
-        from PySide6.QtWidgets import QGridLayout
         self.pages_grid = QGridLayout(self.pages_widget)
+        self.pages_grid.setSpacing(5)  # Add some spacing between items
+
         self.pages_scroll.setWidget(self.pages_widget)
         self.pages_scroll.setWidgetResizable(True)
 
@@ -218,7 +230,7 @@ class PageListWidget(QWidget):
         self.setLayout(layout)
 
     def load_pages(self, pages: List[PDFPageData]):
-        """Load pages into the list"""
+        """Load pages into the grid"""
         self.clear_pages()
 
         for page_data in pages:
@@ -239,8 +251,13 @@ class PageListWidget(QWidget):
         self.page_items.append(page_item_widget)
 
     def clear_pages(self):
-        """Clear all pages from the list"""
-        self.pages_list.clear()
+        """Clear all pages from the grid"""
+        # Clear the grid layout
+        for i in reversed(range(self.pages_grid.count())):
+            child = self.pages_grid.takeAt(i).widget()
+            if child:
+                child.deleteLater()
+
         self.page_items.clear()
         self.update_count_label()
 
@@ -279,11 +296,10 @@ class PageListWidget(QWidget):
         """Filter pages based on search text"""
         filter_text = filter_text.lower().strip()
 
-        for i, item in enumerate(self.page_items):
+        for item in self.page_items:
             if not filter_text:
                 # Show all if no filter
                 item.show()
-                self.pages_list.item(i).setHidden(False)
             else:
                 # Check if filter matches filename or page number
                 page_data = item.page_data
@@ -296,7 +312,6 @@ class PageListWidget(QWidget):
                             filter_text in page_data.assigned_profile.lower()))
 
                 item.setVisible(matches)
-                self.pages_list.item(i).setHidden(not matches)
 
         self.update_count_label()
 

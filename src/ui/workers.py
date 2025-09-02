@@ -1,9 +1,9 @@
 from PySide6.QtCore import QThread, Signal
 from typing import List
 
-from models.pdf_page import PDFPageData, ExportJob
-from services.pdf_service import PDFService
-from services.export_service import ExportService
+from src.models.pdf_page import PDFPageData, ExportJob
+from src.services.pdf_service import PDFService
+from src.services.export_service import ExportService
 
 
 class PDFLoader(QThread):
@@ -40,12 +40,13 @@ class PDFLoader(QThread):
                 try:
                     pages = PDFService.load_pages_from_file(str(pdf_file))
                     all_pages.extend(pages)
+                    self.progress.emit(f"  Loaded {len(pages)} pages from {pdf_file.name}")
                 except Exception as e:
-                    self.progress.emit(f"Error loading {pdf_file.name}: {str(e)}")
+                    self.progress.emit(f"  Error loading {pdf_file.name}: {str(e)}")
                     continue
 
             if all_pages:
-                self.progress.emit(f"Loaded {len(all_pages)} pages total.")
+                self.progress.emit(f"Successfully loaded {len(all_pages)} pages total.")
                 self.pages_loaded.emit(all_pages)
             else:
                 self.error.emit("No valid pages found in PDF files.")
@@ -93,7 +94,7 @@ class PDFExporter(QThread):
                 result = {
                     'job': job,
                     'success': success,
-                    'message': f"Exported: {job.output_path}" if success else f"Failed: {job.output_path}"
+                    'message': f"✓ Exported: {job.output_path}" if success else f"✗ Failed: {job.output_path}"
                 }
 
                 results.append(result)
@@ -103,7 +104,11 @@ class PDFExporter(QThread):
             successful = sum(1 for r in results if r['success'])
             failed = len(results) - successful
 
-            self.progress.emit(f"\nExport complete! {successful} successful, {failed} failed.")
+            self.progress.emit(f"\n=== Export Summary ===")
+            self.progress.emit(f"✓ Successful: {successful}")
+            self.progress.emit(f"✗ Failed: {failed}")
+            self.progress.emit(f"Total: {len(results)}")
+
             self.export_complete.emit(results)
 
         except Exception as e:

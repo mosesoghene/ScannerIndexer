@@ -85,7 +85,7 @@ class ProfileEditor(QDialog):
         self.pattern_input.setPlaceholderText("{field_name}/{another_field}")
         info_layout.addRow("Output Pattern:", self.pattern_input)
 
-        # ADD AFTER output pattern input
+        # Input folder
         self.input_folder_input = QLineEdit(self.profile.input_folder)
         self.input_folder_btn = QPushButton("Browse...")
         self.input_folder_btn.clicked.connect(self.browse_input_folder)
@@ -94,6 +94,7 @@ class ProfileEditor(QDialog):
         input_folder_layout.addWidget(self.input_folder_btn)
         info_layout.addRow("Input Folder:", input_folder_layout)
 
+        # Output folder
         self.output_folder_input = QLineEdit(self.profile.output_folder)
         self.output_folder_btn = QPushButton("Browse...")
         self.output_folder_btn.clicked.connect(self.browse_output_folder)
@@ -222,6 +223,7 @@ class IndexPanel(QWidget):
 
     profile_applied = Signal(str, IndexProfile)  # profile_name, profile
     batch_assignment_requested = Signal(str)  # profile_name
+    profile_folders_changed = Signal(str, str)  # input_folder, output_folder for auto-loading
 
     def __init__(self):
         super().__init__()
@@ -258,13 +260,25 @@ class IndexPanel(QWidget):
         delete_btn.clicked.connect(self.delete_profile)
         selector_layout.addWidget(delete_btn)
 
+        # Load from profile button
+        load_btn = QPushButton("Load PDFs from Profile Input")
+        load_btn.clicked.connect(self.load_from_profile_input)
+        load_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
+        selector_layout.addWidget(load_btn)
+
         profile_layout.addLayout(selector_layout)
 
-        # Profile description
+        # Profile description and folder info
         self.profile_description = QLabel("Select a profile to see description")
         self.profile_description.setWordWrap(True)
         self.profile_description.setStyleSheet("color: #666; font-style: italic;")
         profile_layout.addWidget(self.profile_description)
+
+        # Folder info display
+        self.folder_info = QLabel("")
+        self.folder_info.setWordWrap(True)
+        self.folder_info.setStyleSheet("background: #f0f0f0; padding: 4px; border-radius: 3px; font-size: 10px;")
+        profile_layout.addWidget(self.folder_info)
 
         profile_group.setLayout(profile_layout)
         layout.addWidget(profile_group)
@@ -326,10 +340,39 @@ class IndexPanel(QWidget):
             self.profile_description.setText(
                 self.current_profile.description or "No description available"
             )
+
+            # Show folder information
+            folder_info_parts = []
+            if self.current_profile.input_folder:
+                folder_info_parts.append(f"Input: {self.current_profile.input_folder}")
+            if self.current_profile.output_folder:
+                folder_info_parts.append(f"Output: {self.current_profile.output_folder}")
+
+            if folder_info_parts:
+                self.folder_info.setText(" | ".join(folder_info_parts))
+            else:
+                self.folder_info.setText("No folders configured")
+
             self.setup_field_editors()
         else:
             self.profile_description.setText("Select a profile to see description")
+            self.folder_info.setText("")
             self.clear_field_editors()
+
+    def load_from_profile_input(self):
+        """Load PDFs from the current profile's input folder"""
+        if not self.current_profile:
+            QMessageBox.information(self, "No Profile", "Please select a profile first.")
+            return
+
+        if not self.current_profile.input_folder:
+            QMessageBox.information(self, "No Input Folder",
+                                    "Please set an input folder in the profile first (Edit button).")
+            return
+
+        # Emit signal to main window to load PDFs
+        self.profile_folders_changed.emit(self.current_profile.input_folder,
+                                          self.current_profile.output_folder or "")
 
     def setup_field_editors(self):
         """Setup field editors for current profile"""
@@ -341,6 +384,7 @@ class IndexPanel(QWidget):
         for field in self.current_profile.fields:
             editor = FieldEditor(field)
             editor.field_changed.connect(self.update_output_preview)
+            editor.field_changed.connect(self.auto_save_profile)  # Auto-save on changes
             self.field_editors.append(editor)
             self.fields_layout.addWidget(editor)
 
@@ -365,11 +409,18 @@ class IndexPanel(QWidget):
             return
 
         try:
-            output_path = self.current_profile.generate_output_path("/base/output")
-            relative_path = output_path.replace("/base/output/", "")
+            # Use profile's output folder if set, otherwise show generic path
+            base_path = self.current_profile.output_folder or "/output"
+            output_path = self.current_profile.generate_output_path(base_path)
+            relative_path = output_path.replace(base_path + "/", "")
             self.output_preview.setText(f"Output: {relative_path}")
         except Exception:
             self.output_preview.setText("Output: Invalid pattern or missing fields")
+
+    def auto_save_profile(self):
+        """Auto-save the current profile when fields change"""
+        if self.current_profile:
+            self.profile_manager.save_profiles()
 
     def new_profile(self):
         """Create a new profile"""
