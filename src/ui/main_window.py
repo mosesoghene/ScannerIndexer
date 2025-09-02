@@ -221,8 +221,9 @@ class PDFExtractorApp(QMainWindow):
                                     "No pages have been assigned index profiles yet.")
             return
 
-        # Create export jobs using assigned profiles
-        export_jobs = []
+        # Group pages by their assigned profile and output path
+        from collections import defaultdict
+        profile_groups = defaultdict(list)
         profile_manager = self.index_panel.profile_manager
 
         for page_data in pages_to_export:
@@ -236,26 +237,30 @@ class PDFExtractorApp(QMainWindow):
                                         "Please set an output folder in the profile or use 'Set Output Folder' button.")
                     return
 
-                # Generate output path using profile
+                # Generate output path using profile (without page number)
                 output_path = profile.generate_output_path(output_base)
 
-                # Sanitize the filename
-                sanitized_filename = FileUtils.sanitize_filename(
-                    f"{output_path}_page_{page_data.page_number + 1}"
-                )
+                if not output_path.endswith('.pdf'):
+                    output_path += '.pdf'
 
-                if not sanitized_filename.endswith('.pdf'):
-                    sanitized_filename += '.pdf'
+                # Group pages by their output path
+                profile_groups[output_path].append(page_data)
 
-                # Ensure unique filename
-                final_output_path = FileUtils.ensure_unique_filename(sanitized_filename)
+        # Create batch export jobs - one job per group
+        export_jobs = []
+        for output_path, pages_group in profile_groups.items():
+            # Ensure unique filename for this batch
+            final_output_path = FileUtils.ensure_unique_filename(output_path)
 
-                job = ExportJob(
-                    source_path=page_data.source_path,
-                    page_number=page_data.page_number,
-                    output_path=final_output_path
-                )
-                export_jobs.append(job)
+            # Create a single job that will contain all pages for this profile/path
+            # We'll use the first page as the primary job and pass all pages
+            job = ExportJob(
+                source_path="BATCH",  # Special marker for batch jobs
+                page_number=0,  # Not used for batch jobs
+                output_path=final_output_path
+            )
+            job.pages_group = pages_group  # Add the pages group to the job
+            export_jobs.append(job)
 
         if not export_jobs:
             QMessageBox.information(self, "No Valid Jobs",

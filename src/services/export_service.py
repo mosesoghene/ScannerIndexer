@@ -9,9 +9,15 @@ class ExportService:
     """Handles PDF page extraction and export operations"""
 
     @staticmethod
+    @staticmethod
     def export_page(job: ExportJob) -> bool:
-        """Export a single page to a new PDF file"""
+        """Export a single page or batch of pages to a new PDF file"""
         try:
+            # Check if this is a batch job
+            if hasattr(job, 'pages_group') and job.source_path == "BATCH":
+                return ExportService.export_pages_batch_to_single_file(job.pages_group, job.output_path)
+
+            # Original single page export logic
             # Create output directory if it doesn't exist
             output_path = Path(job.output_path)
 
@@ -39,7 +45,7 @@ class ExportService:
             return True
 
         except Exception as e:
-            print(f"Error exporting page {job.page_number} from {job.source_path}: {e}")
+            print(f"Error exporting: {e}")
             return False
 
     @staticmethod
@@ -107,3 +113,42 @@ class ExportService:
             'folders': folders,
             'total_files': len(jobs)
         }
+
+    @staticmethod
+    def export_pages_batch_to_single_file(pages_group: List, output_path: str) -> bool:
+        """Export multiple pages from potentially different PDFs into a single output file"""
+        try:
+            from src.models.pdf_page import PDFPageData
+
+            # Create output directory if it doesn't exist
+            output_file_path = Path(output_path)
+            output_file_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Create new document for the combined output
+            new_doc = fitz.open()
+
+            # Add each page to the new document
+            for page_data in pages_group:
+                try:
+                    # Open source PDF
+                    source_doc = fitz.open(page_data.source_path)
+
+                    # Insert the specific page
+                    new_doc.insert_pdf(source_doc, from_page=page_data.page_number, to_page=page_data.page_number)
+
+                    # Close source document
+                    source_doc.close()
+
+                except Exception as e:
+                    print(f"Error adding page {page_data.page_number} from {page_data.source_path}: {e}")
+                    continue
+
+            # Save the combined document
+            new_doc.save(str(output_file_path))
+            new_doc.close()
+
+            return True
+
+        except Exception as e:
+            print(f"Error creating batch export {output_path}: {e}")
+            return False

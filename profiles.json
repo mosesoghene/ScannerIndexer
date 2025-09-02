@@ -1,14 +1,14 @@
 [
   {
-    "name": "Basic Document",
+    "name": "Basic Document (Copy) (Copy)",
     "description": "Simple document indexing",
     "output_pattern": "{document_type}/{file_name}",
-    "input_folder": "",
-    "output_folder": "",
+    "input_folder": "C:/Users/moghene/Documents/Scanner",
+    "output_folder": "C:/Users/moghene/Documents/Scanner Output",
     "fields": [
       {
         "name": "Document Type",
-        "value": "",
+        "value": "a folder",
         "placeholder": "e.g., contracts, invoices",
         "required": false,
         "field_type": "text",
@@ -16,7 +16,7 @@
       },
       {
         "name": "File Name",
-        "value": "",
+        "value": "a file",
         "placeholder": "Output filename",
         "required": true,
         "field_type": "text",

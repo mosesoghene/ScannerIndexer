@@ -384,12 +384,26 @@ class PageListWidget(QWidget):
     def assign_profile_to_selected(self, profile_name: str):
         """Assign a profile to all selected pages"""
         selected_count = 0
+        processed_sources = set()  # Track which sources we've already processed
+
         for item in self.page_items:
             if item.is_selected():
                 item.assign_profile(profile_name)
-                # Mark source PDF as processed
-                self.mark_source_as_processed(item.page_data.source_path)
                 selected_count += 1
+
+                # Only mark source as processed once, and only if ALL pages from
+                # that source have been assigned profiles
+                source_path = item.page_data.source_path
+                if source_path not in processed_sources:
+                    processed_sources.add(source_path)
+                    # Check if all pages from this source now have profiles assigned
+                    all_assigned = all(
+                        page_item.page_data.assigned_profile is not None
+                        for page_item in self.page_items
+                        if page_item.page_data.source_path == source_path
+                    )
+                    if all_assigned:
+                        self.mark_source_as_processed(source_path)
 
         return selected_count
 
