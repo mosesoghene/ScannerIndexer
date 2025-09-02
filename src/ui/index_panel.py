@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
@@ -37,6 +38,15 @@ class FieldEditor(QWidget):
             self.input.addItems(self.field.options)
             self.input.setCurrentText(self.field.value)
             self.input.currentTextChanged.connect(self.on_value_changed)
+        elif self.field.field_type == "date":
+            self.input = QLineEdit(self.field.value)
+            self.input.setPlaceholderText("dd/mm/yyyy or dd/mm/yy")
+            self.input.textChanged.connect(self.on_value_changed)
+        elif self.field.field_type in ["folder", "filename"]:
+            self.input = QLineEdit(self.field.value)
+            placeholder = "dd_mm_yyyy or dd_mm_yy format" if self.field.field_type == "folder" else "filename_dd_mm_yyyy"
+            self.input.setPlaceholderText(placeholder)
+            self.input.textChanged.connect(self.on_value_changed)
         else:
             self.input = QLineEdit(self.field.value)
             self.input.setPlaceholderText(self.field.placeholder)
@@ -46,9 +56,37 @@ class FieldEditor(QWidget):
         self.setLayout(layout)
 
     def on_value_changed(self, value: str):
-        """Handle input value changes"""
+        """Handle input value changes with formatting"""
+        if self.field.field_type == "date":
+            # Auto-format date input
+            value = self.format_date_input(value)
+        elif self.field.field_type in ["folder", "filename"]:
+            # Auto-format folder/filename with underscores
+            value = self.format_folder_filename_input(value)
+
         self.field.value = value
         self.field_changed.emit()
+
+    def format_date_input(self, value: str) -> str:
+        """Format date input to dd/mm/yyyy"""
+        # Remove any non-digit characters except /
+        cleaned = re.sub(r'[^\d/]', '', value)
+
+        # Auto-add slashes
+        if len(cleaned) == 2 and not cleaned.endswith('/'):
+            cleaned += '/'
+        elif len(cleaned) == 5 and cleaned.count('/') == 1:
+            cleaned += '/'
+
+        return cleaned
+
+    def format_folder_filename_input(self, value: str) -> str:
+        """Format folder/filename input with underscores"""
+        # Replace spaces and slashes with underscores
+        formatted = re.sub(r'[\s/]', '_', value)
+        # Remove invalid filename characters
+        formatted = re.sub(r'[<>:"/\\|?*]', '', formatted)
+        return formatted
 
     def get_value(self) -> str:
         """Get current field value"""
@@ -190,6 +228,14 @@ class ProfileEditor(QDialog):
             name_input.textChanged.connect(lambda text, f=field: setattr(f, 'name', text))
             field_layout.addWidget(QLabel("Name:"))
             field_layout.addWidget(name_input)
+
+            # Field type dropdown
+            type_combo = QComboBox()
+            type_combo.addItems(["text", "date", "folder", "filename", "dropdown"])
+            type_combo.setCurrentText(field.field_type)
+            type_combo.currentTextChanged.connect(lambda text, f=field: setattr(f, 'field_type', text))
+            field_layout.addWidget(QLabel("Type:"))
+            field_layout.addWidget(type_combo)
 
             # Field placeholder
             placeholder_input = QLineEdit(field.placeholder)

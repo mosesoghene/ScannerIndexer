@@ -14,7 +14,13 @@ class ExportService:
         try:
             # Create output directory if it doesn't exist
             output_path = Path(job.output_path)
+
+            # Ensure the directory structure exists
             output_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Ensure the filename ends with .pdf
+            if not output_path.suffix.lower() == '.pdf':
+                output_path = output_path.with_suffix('.pdf')
 
             # Open source PDF
             doc = fitz.open(job.source_path)
@@ -24,7 +30,7 @@ class ExportService:
             new_doc.insert_pdf(doc, from_page=job.page_number, to_page=job.page_number)
 
             # Save the new document
-            new_doc.save(job.output_path)
+            new_doc.save(str(output_path))
 
             # Clean up
             new_doc.close()

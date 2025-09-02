@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 import json
@@ -58,10 +59,20 @@ class IndexProfile:
         """Generate output path based on field values and pattern"""
         replacements = {}
 
-        # Add field values
+        # Add field values with proper key formatting
         for field in self.fields:
             key = field.name.lower().replace(" ", "_")
-            replacements[key] = field.value.strip() or "unknown"
+            value = field.value.strip() if field.value else "unknown"
+
+            # Special formatting for different field types
+            if field.field_type == "date" and value != "unknown":
+                # Convert dd/mm/yyyy to dd_mm_yyyy for folder names
+                value = value.replace('/', '_')
+            elif field.field_type in ["folder", "filename"] and value != "unknown":
+                # Ensure underscores for folder/filename types
+                value = re.sub(r'[\s/]', '_', value)
+
+            replacements[key] = value
 
         # Default replacements
         replacements.setdefault("folder_name", "extracted")
@@ -69,6 +80,8 @@ class IndexProfile:
 
         try:
             relative_path = self.output_pattern.format(**replacements)
+            # Ensure path uses forward slashes and is properly formatted
+            relative_path = relative_path.replace('\\', '/')
             return str(Path(base_dir) / relative_path)
         except KeyError as e:
             # Fallback if pattern has undefined keys

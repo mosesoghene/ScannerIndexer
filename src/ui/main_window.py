@@ -23,8 +23,14 @@ class PDFExtractorApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.output_folder = None
+        self.loader = None  # Initialize thread references
+        self.exporter = None
         self.setup_ui()
-        self.auto_load_from_profiles()
+
+        # Connect index panel signals
+        self.index_panel.profile_folders_changed.connect(self.load_from_profile_folders)
+
+
 
     def setup_ui(self):
         self.setWindowTitle("PDF Page Extractor - Index & Extract")
@@ -42,19 +48,11 @@ class PDFExtractorApp(QMainWindow):
 
         main_layout = QVBoxLayout()
 
-        # Top toolbar
+        # Top toolbar - simplified
         toolbar_layout = QHBoxLayout()
 
-        self.browse_btn = QPushButton("Browse PDF Folder")
-        self.browse_btn.clicked.connect(self.browse_folder)
-        toolbar_layout.addWidget(self.browse_btn)
-
-        # ADD MISSING OUTPUT FOLDER BUTTON
-        self.output_btn = QPushButton("Set Output Folder")
-        self.output_btn.clicked.connect(self.set_output_folder)
-        toolbar_layout.addWidget(self.output_btn)
-
-        self.output_label = QLabel("Output: Not set")
+        self.output_label = QLabel("Ready to load PDFs from profiles")
+        self.output_label.setStyleSheet("font-weight: bold; color: #666;")
         toolbar_layout.addWidget(self.output_label)
 
         toolbar_layout.addStretch()
@@ -151,22 +149,14 @@ class PDFExtractorApp(QMainWindow):
                 self.load_pdfs(profile.input_folder)
                 break
 
-    def browse_folder(self):
-        """Open folder dialog and load PDFs"""
-        folder = QFileDialog.getExistingDirectory(self, "Select PDF Folder")
-        if folder:
-            self.load_pdfs(folder)
-
-    def set_output_folder(self):
-        """Set the output folder for exports"""
-        folder = QFileDialog.getExistingDirectory(self, "Select Output Folder")
-        if folder:
-            self.output_folder = folder
-            self.output_label.setText(f"Output: {folder}")
-            self.update_export_button_state()
-
     def load_pdfs(self, folder_path: str):
         """Load PDFs from folder in background thread"""
+        # Stop any existing loader
+        if self.loader and self.loader.isRunning():
+            self.loader.stop()
+            self.loader.wait(1000)
+            self.cleanup_loader()
+
         self.page_list.clear_pages()
         self.status_text.clear()
         self.status_text.append("Loading PDFs from folder...")
@@ -180,6 +170,7 @@ class PDFExtractorApp(QMainWindow):
         self.loader.progress.connect(self.status_text.append)
         self.loader.pages_loaded.connect(self.on_pages_loaded)
         self.loader.error.connect(self.on_load_error)
+        self.loader.finished.connect(self.cleanup_loader)
         self.loader.finished.connect(lambda: self.set_buttons_enabled(True))
         self.loader.start()
 
@@ -272,6 +263,12 @@ class PDFExtractorApp(QMainWindow):
             return
 
         # Start export
+        # Stop any existing exporter
+        if self.exporter and self.exporter.isRunning():
+            self.exporter.stop()
+            self.exporter.wait(1000)
+            self.cleanup_exporter()
+
         self.status_text.append(f"Starting export of {len(export_jobs)} pages...")
         self.set_buttons_enabled(False)
 
@@ -279,8 +276,21 @@ class PDFExtractorApp(QMainWindow):
         self.exporter.progress.connect(self.status_text.append)
         self.exporter.export_complete.connect(self.on_export_complete)
         self.exporter.error.connect(self.on_export_error)
+        self.exporter.finished.connect(self.cleanup_exporter)
         self.exporter.finished.connect(lambda: self.set_buttons_enabled(True))
         self.exporter.start()
+
+    def cleanup_loader(self):
+        """Clean up the loader thread"""
+        if self.loader:
+            self.loader.deleteLater()
+            self.loader = None
+
+    def cleanup_exporter(self):
+        """Clean up the exporter thread"""
+        if self.exporter:
+            self.exporter.deleteLater()
+            self.exporter = None
 
     def on_export_complete(self, results):
         """Handle successful export completion"""
@@ -329,11 +339,29 @@ class PDFExtractorApp(QMainWindow):
 
     def set_buttons_enabled(self, enabled: bool):
         """Enable/disable all buttons during processing"""
-        self.browse_btn.setEnabled(enabled)
-        self.output_btn.setEnabled(enabled)
 
         # Export button has additional conditions
         if enabled:
             self.update_export_button_state()
         else:
             self.export_btn.setEnabled(False)
+
+    def closeEvent(self, event):
+        """Handle application close event to properly cleanup threads"""
+        # Stop loader thread
+        if self.loader and self.loader.isRunning():
+            self.loader.stop()
+            if not self.loader.wait(2000):
+                self.loader.terminate()
+                self.loader.wait(500)
+            self.loader = None
+
+        # Stop exporter thread
+        if self.exporter and self.exporter.isRunning():
+            self.exporter.stop()
+            if not self.exporter.wait(2000):
+                self.exporter.terminate()
+                self.exporter.wait(500)
+            self.exporter = None
+
+        event.accept()
