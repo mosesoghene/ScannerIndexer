@@ -1,3 +1,4 @@
+import re
 from collections import defaultdict
 from pathlib import Path
 
@@ -200,8 +201,13 @@ class PDFExtractorApp(QMainWindow):
             QMessageBox.information(self, "No Selection", "Please select some pages first.")
             return
 
-        # Assign profile to selected pages
-        count = self.page_list.assign_profile_to_selected(profile_name)
+        # Store current field values for each selected page
+        current_field_values = {}
+        for field in profile.fields:
+            current_field_values[field.name] = field.value
+
+        # Assign profile to selected pages with current field values
+        count = self.page_list.assign_profile_to_selected(profile_name, current_field_values)
 
         self.status_text.append(f"✓ Applied profile '{profile_name}' to {count} pages")
         self.update_export_button_state()
@@ -219,8 +225,13 @@ class PDFExtractorApp(QMainWindow):
         if not profile:
             return
 
+        # Store current field values for this batch
+        current_field_values = {}
+        for field in profile.fields:
+            current_field_values[field.name] = field.value
+
         # Assign profile to selected pages and mark them as batch
-        count = self.page_list.assign_profile_to_selected_batch(profile_name, profile)
+        count = self.page_list.assign_profile_to_selected_batch(profile_name, profile, current_field_values)
 
         self.status_text.append(
             f"✓ Batch assigned profile '{profile_name}' to {count} pages (will export as single file)")
@@ -228,86 +239,120 @@ class PDFExtractorApp(QMainWindow):
 
     def export_all_assigned(self):
         """Export all pages that have assigned profiles"""
-        # Get all pages with assigned profiles
-        all_pages = self.page_list.get_all_pages()
-        pages_to_export = [p for p in all_pages if p.assigned_profile]
+        try:
+            self.status_text.append("Starting export process...")
 
-        if not pages_to_export:
-            QMessageBox.information(self, "No Assigned Pages",
-                                    "No pages have been assigned index profiles yet.")
-            return
+            # Get all pages with assigned profiles
+            all_pages = self.page_list.get_all_pages()
+            pages_to_export = [p for p in all_pages if p.assigned_profile]
 
-        # Group pages by their batch_id if they have one, otherwise individual files
-        profile_groups = defaultdict(list)
-        profile_manager = self.index_panel.profile_manager
+            if not pages_to_export:
+                QMessageBox.information(self, "No Assigned Pages",
+                                        "No pages have been assigned index profiles yet.")
+                return
 
-        for page_data in pages_to_export:
-            profile = profile_manager.get_profile(page_data.assigned_profile)
-            if profile:
-                # Use profile's output folder if set, otherwise use app's output folder
-                output_base = profile.output_folder or self.output_folder
+            self.status_text.append(f"Found {len(pages_to_export)} pages to export")
 
-                if not output_base:
-                    QMessageBox.warning(self, "No Output Folder",
-                                        "Please set an output folder in the profile or use 'Set Output Folder' button.")
-                    return
+            # Group pages by their batch_id if they have one, otherwise individual files
+            from collections import defaultdict
+            profile_groups = defaultdict(list)
+            profile_manager = self.index_panel.profile_manager
 
-                # Generate base output path using profile
-                output_path = profile.generate_output_path(output_base)
+            for page_data in pages_to_export:
+                try:
+                    profile = profile_manager.get_profile(page_data.assigned_profile)
+                    if profile:
+                        # Use profile's output folder if set, otherwise use app's output folder
+                        output_base = profile.output_folder or self.output_folder
 
-                if not output_path.endswith('.pdf'):
-                    output_path += '.pdf'
+                        if not output_base:
+                            QMessageBox.warning(self, "No Output Folder",
+                                                "Please set an output folder in the profile or use 'Set Output Folder' button.")
+                            return
 
-                # Group by batch_id if present, otherwise use individual paths
-                if hasattr(page_data, 'batch_id') and page_data.batch_id:
-                    # For batch items, use batch_id as the grouping key (before .pdf extension)
-                    base_path = output_path.replace('.pdf', '')
-                    group_key = f"{base_path}_{page_data.batch_id}.pdf"
-                else:
-                    # For individual items, make each page unique
-                    base_path = output_path.replace('.pdf', '')
-                    group_key = f"{base_path}_page_{page_data.page_number}.pdf"
+                        # Generate base output path using profile with page-specific field values
+                        field_values = getattr(page_data, 'profile_field_values', {})
+                        if field_values:
+                            self.status_text.append(f"Using stored field values for page {page_data.page_number + 1}")
+                            output_path = profile.generate_output_path_with_values(output_base, field_values)
+                        else:
+                            self.status_text.append(
+                                f"No stored field values for page {page_data.page_number + 1}, using current profile values")
+                            output_path = profile.generate_output_path(output_base)
 
-                profile_groups[group_key].append(page_data)
+                        if not output_path.endswith('.pdf'):
+                            output_path += '.pdf'
 
-        # Create batch export jobs - one job per group
-        export_jobs = []
-        for output_path, pages_group in profile_groups.items():
-            # Ensure unique filename for this batch
-            final_output_path = FileUtils.ensure_unique_filename(output_path)
+                        # Group by batch_id if present, otherwise use individual paths
+                        if hasattr(page_data, 'batch_id') and page_data.batch_id:
+                            # For batch items, use batch_id as the grouping key (before .pdf extension)
+                            base_path = output_path.replace('.pdf', '')
+                            group_key = f"{base_path}_{page_data.batch_id}.pdf"
+                        else:
+                            # For individual items, make each page unique
+                            base_path = output_path.replace('.pdf', '')
+                            group_key = f"{base_path}_page_{page_data.page_number}.pdf"
 
-            # Create a single job that will contain all pages for this profile/path
-            # We'll use the first page as the primary job and pass all pages
-            job = ExportJob(
-                source_path="BATCH",  # Special marker for batch jobs
-                page_number=0,  # Not used for batch jobs
-                output_path=final_output_path
-            )
-            job.pages_group = pages_group  # Add the pages group to the job
-            export_jobs.append(job)
+                        profile_groups[group_key].append(page_data)
 
-        if not export_jobs:
-            QMessageBox.information(self, "No Valid Jobs",
-                                    "No valid export jobs could be created.")
-            return
+                except Exception as e:
+                    self.status_text.append(f"Error processing page {page_data.page_number + 1}: {str(e)}")
+                    continue
 
-        # Start export
-        # Stop any existing exporter
-        if self.exporter and self.exporter.isRunning():
-            self.exporter.stop()
-            self.exporter.wait(1000)
-            self.cleanup_exporter()
+            # Create batch export jobs - one job per group
+            export_jobs = []
+            for output_path, pages_group in profile_groups.items():
+                try:
+                    # Ensure unique filename for this batch
+                    from src.utils.file_utils import FileUtils
+                    final_output_path = FileUtils.ensure_unique_filename(output_path)
 
-        self.status_text.append(f"Starting export of {len(export_jobs)} pages...")
-        self.set_buttons_enabled(False)
+                    # Create a single job that will contain all pages for this profile/path
+                    job = ExportJob(
+                        source_path="BATCH",  # Special marker for batch jobs
+                        page_number=0,  # Not used for batch jobs
+                        output_path=final_output_path
+                    )
+                    job.pages_group = pages_group  # Add the pages group to the job
+                    export_jobs.append(job)
+                    self.status_text.append(f"Created export job: {final_output_path}")
 
-        self.exporter = PDFExporter(export_jobs)
-        self.exporter.progress.connect(self.status_text.append)
-        self.exporter.export_complete.connect(self.on_export_complete)
-        self.exporter.error.connect(self.on_export_error)
-        self.exporter.finished.connect(self.cleanup_exporter)
-        self.exporter.finished.connect(lambda: self.set_buttons_enabled(True))
-        self.exporter.start()
+                except Exception as e:
+                    self.status_text.append(f"Error creating export job for {output_path}: {str(e)}")
+                    continue
+
+            if not export_jobs:
+                QMessageBox.information(self, "No Valid Jobs",
+                                        "No valid export jobs could be created.")
+                return
+
+            self.status_text.append(f"Created {len(export_jobs)} export jobs")
+
+            # Start export
+            # Stop any existing exporter
+            if self.exporter and self.exporter.isRunning():
+                self.exporter.stop()
+                self.exporter.wait(1000)
+                self.cleanup_exporter()
+
+            self.status_text.append(f"Starting export of {len(export_jobs)} jobs...")
+            self.set_buttons_enabled(False)
+
+            self.exporter = PDFExporter(export_jobs)
+            self.exporter.progress.connect(self.status_text.append)
+            self.exporter.export_complete.connect(self.on_export_complete)
+            self.exporter.error.connect(self.on_export_error)
+            self.exporter.finished.connect(self.cleanup_exporter)
+            self.exporter.finished.connect(lambda: self.set_buttons_enabled(True))
+            self.exporter.start()
+
+        except Exception as e:
+            self.status_text.append(f"Critical error in export_all_assigned: {str(e)}")
+            import traceback
+            self.status_text.append(f"Traceback: {traceback.format_exc()}")
+            QMessageBox.critical(self, "Export Error", f"Critical error during export: {str(e)}")
+
+
 
     def cleanup_loader(self):
         """Clean up the loader thread"""

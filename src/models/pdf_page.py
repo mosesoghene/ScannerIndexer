@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
@@ -14,6 +14,7 @@ class PDFPageData:
     selected: bool = False
     assigned_profile: Optional[str] = None  # Name of assigned index profile
     batch_id: Optional[str] = None  # For grouping pages into single files
+    profile_field_values: dict = field(default_factory=dict)  # Store individual field values
 
     @property
     def source_filename(self) -> str:
@@ -31,8 +32,8 @@ class PDFPageData:
             return None
 
         # Default values if not set
-        folder = self.folder_name.strip() or "extracted"
-        filename = self.filename.strip() or f"page_{self.page_number + 1}"
+        folder = self.folder_name.strip()
+        filename = self.filename.strip()
 
         # Add custom tag to folder if provided
         if self.custom_tag.strip():

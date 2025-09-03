@@ -89,6 +89,39 @@ class IndexProfile:
             return str(Path(base_dir) / replacements.get("folder_name", "extracted") / replacements.get("file_name",
                                                                                                         "document"))
 
+    def generate_output_path_with_values(self, base_dir: str, field_values: dict) -> str:
+        """Generate output path based on specific field values"""
+        replacements = {}
+
+        # Use provided field values instead of current profile field values
+        for field in self.fields:
+            key = field.name.lower().replace(" ", "_")
+            value = field_values.get(field.name, "unknown").strip() if field_values.get(field.name) else "unknown"
+
+            # Special formatting for different field types
+            if field.field_type == "date" and value != "unknown":
+                # Convert dd/mm/yyyy to dd_mm_yyyy for folder names
+                value = value.replace('/', '_')
+
+            # Clean value for use in file paths (remove invalid characters)
+            value = re.sub(r'[<>:"/\\|?*]', '_', value)
+
+            replacements[key] = value
+
+        # Default replacements
+        replacements.setdefault("folder_name", "extracted")
+        replacements.setdefault("file_name", "document")
+
+        try:
+            relative_path = self.output_pattern.format(**replacements)
+            # Ensure path uses forward slashes and is properly formatted
+            relative_path = relative_path.replace('\\', '/')
+            return str(Path(base_dir) / relative_path)
+        except KeyError as e:
+            # Fallback if pattern has undefined keys
+            return str(Path(base_dir) / replacements.get("folder_name", "extracted") / replacements.get("file_name",
+                                                                                                        "document"))
+
     def clone(self) -> 'IndexProfile':
         """Create a copy of this profile"""
         return IndexProfile(

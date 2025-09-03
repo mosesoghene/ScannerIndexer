@@ -381,7 +381,7 @@ class PageListWidget(QWidget):
         """Get list of selected page data"""
         return [item.page_data for item in self.page_items if item.is_selected()]
 
-    def assign_profile_to_selected(self, profile_name: str):
+    def assign_profile_to_selected(self, profile_name: str, field_values: dict = None):
         """Assign a profile to all selected pages"""
         selected_count = 0
         processed_sources = set()  # Track which sources we've already processed
@@ -389,6 +389,8 @@ class PageListWidget(QWidget):
         for item in self.page_items:
             if item.is_selected():
                 item.assign_profile(profile_name)
+                if field_values:
+                    item.page_data.profile_field_values = field_values.copy()
                 selected_count += 1
 
                 # Only mark source as processed once, and only if ALL pages from
@@ -407,7 +409,7 @@ class PageListWidget(QWidget):
 
         return selected_count
 
-    def assign_profile_to_selected_batch(self, profile_name: str, profile) -> int:
+    def assign_profile_to_selected_batch(self, profile_name: str, profile, field_values: dict = None) -> int:
         """Assign a profile to selected pages and mark them as a batch group"""
         from src.models.index_profile import IndexProfile
 
@@ -424,6 +426,9 @@ class PageListWidget(QWidget):
         for item in selected_items:
             item.page_data.assigned_profile = profile_name
             item.page_data.batch_id = batch_id  # Add batch grouping
+            # Store field values for this specific page
+            if field_values:
+                item.page_data.profile_field_values = field_values.copy()
             item.assign_profile(profile_name)
 
         return len(selected_items)
