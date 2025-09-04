@@ -32,8 +32,8 @@ class PDFPageData:
             return None
 
         # Default values if not set
-        folder = self.folder_name.strip()
-        filename = self.filename.strip()
+        folder = self.folder_name.strip() or "extracted"
+        filename = self.filename.strip() or f"page_{self.page_number + 1}"
 
         # Add custom tag to folder if provided
         if self.custom_tag.strip():

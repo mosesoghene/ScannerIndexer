@@ -254,7 +254,6 @@ class PDFExtractorApp(QMainWindow):
             self.status_text.append(f"Found {len(pages_to_export)} pages to export")
 
             # Group pages by their batch_id if they have one, otherwise individual files
-            from collections import defaultdict
             profile_groups = defaultdict(list)
             profile_manager = self.index_panel.profile_manager
 
@@ -287,11 +286,11 @@ class PDFExtractorApp(QMainWindow):
                         if hasattr(page_data, 'batch_id') and page_data.batch_id:
                             # For batch items, use batch_id as the grouping key (before .pdf extension)
                             base_path = output_path.replace('.pdf', '')
-                            group_key = f"{base_path}_{page_data.batch_id}.pdf"
+                            group_key = f"{base_path}.pdf"
                         else:
                             # For individual items, make each page unique
                             base_path = output_path.replace('.pdf', '')
-                            group_key = f"{base_path}_page_{page_data.page_number}.pdf"
+                            group_key = f"{base_path}_{page_data.page_number}.pdf"
 
                         profile_groups[group_key].append(page_data)
 
